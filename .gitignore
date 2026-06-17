@@ -1,8 +1,9 @@
 # Fetched upstream picoruby/picoruby (rake setup) — never committed
 /vendor/picoruby/
 
-# Host build output (rake build → MRUBY_BUILD_DIR=./build)
+# Host build output (rake build / build:ble → MRUBY_BUILD_DIR)
 /build/
+/build-ble/
 
 # bundler / local scratch
 /.bundle/
