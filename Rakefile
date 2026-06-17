@@ -1,34 +1,37 @@
 # R2P2-macOS — environment to build & run standard PicoRuby / R2P2 on macOS host.
 #
-# Mechanism: fetch upstream picoruby/picoruby from GitHub (NO submodule, NO
-# sibling fork) into vendor/picoruby via `rake setup`, then build it with our
-# MRUBY_CONFIG, redirecting ALL output into ./build via MRUBY_BUILD_DIR so the
-# fetched picoruby source stays pristine.
+# Mechanism: fetch picoruby from GitHub (NO submodule, NO sibling-checkout build)
+# into vendor/picoruby via `rake setup`, then build it with our MRUBY_CONFIG,
+# redirecting ALL output into ./build* via MRUBY_BUILD_DIR so the fetched source
+# stays pristine.
 #
-# The macOS environment that the upstream build requires and is easy to get wrong:
-#   - rbenv Ruby 4.0.5 (upstream build.rb uses `_1`, needs >= 2.7; macOS system
-#     Ruby 2.6 fails; upstream has no .ruby-version, so we pin it)
-#   - Homebrew openssl@3 -L/-I flags (the networking gembox links ssl/crypto)
+#   PICORUBY_REPO  default upstream picoruby/picoruby; override to verify a fork
+#                  branch (e.g. the local bash0C7/picoruby that holds a PR branch).
+#   PICORUBY_REF   default master; set to a branch/tag to verify a PR.
+#
+# macOS env the upstream build requires: rbenv Ruby 4.0.5 + Homebrew openssl@3.
 #
 # Usage:
-#   rake setup    # clone upstream picoruby/picoruby into vendor/picoruby (PICORUBY_REF, default master)
-#   rake          # == rake build
-#   rake build    # build standard r2p2 + picoruby into ./build/host (incremental/idempotent)
-#   rake run      # run the r2p2 shell (or APP=path/to.rb on the picoruby runner)
-#   rake clean    # remove ./build
-#   rake clobber  # remove ./build and the fetched vendor/picoruby
+#   rake setup                              clone picoruby into vendor/picoruby
+#   rake          / rake build              standard r2p2 + picoruby -> ./build
+#   rake build:ble                          picoruby-ble + Darwin port -> ./build-ble
+#   rake run [APP=x.rb]                     run r2p2 shell (or picoruby APP)
+#   rake run:ble APP=x.rb                   run an app on the BLE runtime
+#   rake clean                              remove build outputs
+#   rake clobber                            also remove vendor/picoruby
 
 require "shellwords"
 
 R2P2_MACOS_ROOT = __dir__
-PICORUBY_REPO   = "https://github.com/picoruby/picoruby.git"
+PICORUBY_REPO   = ENV["PICORUBY_REPO"] || "https://github.com/picoruby/picoruby.git"
 PICORUBY_REF    = ENV["PICORUBY_REF"] || "master"
 PICORUBY_SRC    = File.join(R2P2_MACOS_ROOT, "vendor", "picoruby")
-BUILD_DIR       = File.join(R2P2_MACOS_ROOT, "build")
-HOST_BIN_R2P2   = File.join(BUILD_DIR, "host", "bin", "r2p2")
-HOST_BIN_PR     = File.join(BUILD_DIR, "host", "bin", "picoruby")
 BUILD_RUBY      = "4.0.5"
+
 DEFAULT_CONFIG  = File.join(R2P2_MACOS_ROOT, "build_config", "default.rb")
+DEFAULT_BUILD   = File.join(R2P2_MACOS_ROOT, "build")
+BLE_CONFIG      = File.join(R2P2_MACOS_ROOT, "build_config", "ble.rb")
+BLE_BUILD       = File.join(R2P2_MACOS_ROOT, "build-ble")
 
 def openssl_prefix
   prefix = `brew --prefix openssl@3 2>/dev/null`.strip
@@ -44,49 +47,68 @@ def build_env
   }
 end
 
-desc "Fetch upstream picoruby/picoruby from GitHub into vendor/picoruby (PICORUBY_REF, default master)"
+# Build via upstream's DEFAULT rake task so it honors our MRUBY_CONFIG; all
+# output is redirected into build_dir, leaving the fetched source pristine.
+# NB: do NOT use `picoruby:prod` — it hardcodes MRUBY_CONFIG=default.
+def build_runtime(config:, build_dir:, bins:, label:)
+  ssl = openssl_prefix
+  cmd = "cd #{PICORUBY_SRC.shellescape} && " \
+        "rake LDFLAGS=-L#{ssl}/lib CFLAGS=-I#{ssl}/include"
+  sh build_env.merge("MRUBY_CONFIG" => config, "MRUBY_BUILD_DIR" => build_dir), cmd
+  bins.each { |bin| raise "build finished but #{bin} is missing" unless File.executable?(bin) }
+  bins.each { |bin| puts "Built: #{bin}" }
+end
+
+desc "Fetch picoruby from PICORUBY_REPO (default upstream) into vendor/picoruby at PICORUBY_REF (default master)"
 task :setup do
   unless Dir.exist?(PICORUBY_SRC)
     sh "git clone --recursive --branch #{PICORUBY_REF.shellescape} " \
-       "#{PICORUBY_REPO} #{PICORUBY_SRC.shellescape}"
+       "#{PICORUBY_REPO.shellescape} #{PICORUBY_SRC.shellescape}"
   end
   # No `bundle install`: the host build uses bare `rake`; its deps (prism etc.)
   # are git submodules pulled by --recursive, and rake is a default gem.
 end
 
-# Build via upstream's DEFAULT rake task so it honors our MRUBY_CONFIG.
-# NB: do NOT use `picoruby:prod` — that task hardcodes MRUBY_CONFIG=default and
-# would ignore our config. MRUBY_BUILD_DIR redirects all output out of the source.
 desc "Build standard r2p2 + picoruby host runtime into ./build"
 task build: :setup do
-  ssl = openssl_prefix
-  cmd = "cd #{PICORUBY_SRC.shellescape} && " \
-        "rake LDFLAGS=-L#{ssl}/lib CFLAGS=-I#{ssl}/include"
-  sh build_env.merge("MRUBY_CONFIG" => DEFAULT_CONFIG, "MRUBY_BUILD_DIR" => BUILD_DIR), cmd
-  [HOST_BIN_R2P2, HOST_BIN_PR].each do |bin|
-    raise "build finished but #{bin} is missing" unless File.executable?(bin)
-  end
-  puts "Built: #{HOST_BIN_R2P2}"
-  puts "Built: #{HOST_BIN_PR}"
+  build_runtime(config: DEFAULT_CONFIG, build_dir: DEFAULT_BUILD, label: "",
+                bins: [File.join(DEFAULT_BUILD, "host", "bin", "r2p2"),
+                       File.join(DEFAULT_BUILD, "host", "bin", "picoruby")])
+end
+
+desc "Build the BLE host runtime (picoruby-ble + Darwin/CoreBluetooth port) into ./build-ble"
+task "build:ble" => :setup do
+  build_runtime(config: BLE_CONFIG, build_dir: BLE_BUILD, label: " (ble)",
+                bins: [File.join(BLE_BUILD, "host", "bin", "picoruby")])
 end
 
 desc "Run the r2p2 shell, or a Ruby app on the picoruby runner (APP=path/to.rb)"
 task :run do
+  r2p2 = File.join(DEFAULT_BUILD, "host", "bin", "r2p2")
+  pr   = File.join(DEFAULT_BUILD, "host", "bin", "picoruby")
   if (app = ENV["APP"])
-    raise "Not built. Run `rake build` first." unless File.executable?(HOST_BIN_PR)
-    exec({}, HOST_BIN_PR, app)
+    raise "Not built. Run `rake build` first." unless File.executable?(pr)
+    exec({}, pr, app)
   else
-    raise "Not built. Run `rake build` first." unless File.executable?(HOST_BIN_R2P2)
-    exec({}, HOST_BIN_R2P2)
+    raise "Not built. Run `rake build` first." unless File.executable?(r2p2)
+    exec({}, r2p2)
   end
 end
 
-desc "Remove ./build (keeps fetched vendor/picoruby)"
-task :clean do
-  rm_rf BUILD_DIR
+desc "Run a Ruby app on the BLE runtime (APP=path/to.rb)"
+task "run:ble" do
+  pr = File.join(BLE_BUILD, "host", "bin", "picoruby")
+  raise "Not built. Run `rake build:ble` first." unless File.executable?(pr)
+  exec({}, pr, ENV["APP"] || raise("set APP=path/to.rb"))
 end
 
-desc "Remove ./build and the fetched vendor/picoruby"
+desc "Remove build outputs (keeps fetched vendor/picoruby)"
+task :clean do
+  rm_rf DEFAULT_BUILD
+  rm_rf BLE_BUILD
+end
+
+desc "Remove build outputs and the fetched vendor/picoruby"
 task clobber: :clean do
   rm_rf PICORUBY_SRC
 end
