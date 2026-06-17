@@ -69,6 +69,14 @@ task :setup do
   # are git submodules pulled by --recursive, and rake is a default gem.
 end
 
+desc "Dev loop: re-fetch PICORUBY_REF into the existing vendor/picoruby (no re-clone)"
+task :refresh do
+  raise "vendor/picoruby absent; run `rake build` first" unless Dir.exist?(PICORUBY_SRC)
+  sh "git -C #{PICORUBY_SRC.shellescape} fetch #{PICORUBY_REPO.shellescape} #{PICORUBY_REF.shellescape}"
+  sh "git -C #{PICORUBY_SRC.shellescape} checkout -B #{PICORUBY_REF.shellescape} FETCH_HEAD"
+  sh "git -C #{PICORUBY_SRC.shellescape} submodule update --init --recursive"
+end
+
 desc "Build standard r2p2 + picoruby host runtime into ./build"
 task build: :setup do
   build_runtime(config: DEFAULT_CONFIG, build_dir: DEFAULT_BUILD, label: "",
