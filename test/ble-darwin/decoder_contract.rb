@@ -1,10 +1,9 @@
-# Contract test: the BTstack-format byte layouts the Darwin shim synthesizes are
+# Contract test: the BTstack-format byte layouts the Darwin port synthesizes are
 # decoded by the real ble_central.rb into the correct @services tree, reaching
 # :TC_IDLE. Runs on the host BLE binary; no radio. The byte vectors below are the
-# exact ones the Swift builders emit (verified by PicoBLEPacketCheck) so this
-# closes the loop Swift-bytes -> decoder.
+# exact ones the Swift builders emit, so this closes the loop Swift-bytes -> decoder.
 #
-#   build-ble/host/bin/picoruby ports/darwin/test/decoder_contract.rb
+#   build-ble/host/bin/picoruby test/ble-darwin/decoder_contract.rb
 
 $failures = 0
 def check(name, got, want)

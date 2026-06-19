@@ -2,9 +2,9 @@
 # (the Swift fixture, or an iOS/Android app like nRF Connect) over the live radio.
 #
 #   1) start a peripheral on a SECOND device (same-Mac loopback does NOT work):
-#        - 2nd Mac:  swiftc ports/darwin/test/test_peripheral.swift -o test_peripheral && ./test_peripheral
+#        - 2nd Mac:  swiftc test/ble-darwin/test_peripheral.swift -o test_peripheral && ./test_peripheral
 #        - iOS:      nRF Connect -> advertise a GATT server with a readable characteristic
-#   2) build-ble/host/bin/picoruby ports/darwin/test/e2e_central.rb
+#   2) build-ble/host/bin/picoruby test/ble-darwin/e2e_central.rb
 #
 # Target selection (robust to peripherals that don't advertise a name):
 #   - If TARGET_NAME is non-empty and a device advertises it, connect to that.

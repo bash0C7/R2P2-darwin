@@ -1,10 +1,10 @@
 # BLE host (POSIX) build for R2P2-macOS: standard picoruby + picoruby-ble with
-# the Apple/Darwin (CoreBluetooth) port under development.
+# the Apple/Darwin (CoreBluetooth) port.
 # Don't invoke directly — use `rake build:ble`.
 #
-# STEP 1: links the Darwin port as C stubs (no CoreBluetooth yet), so this build
-# does NOT link the rb-corebluetooth-mac Swift dylib. That linkage is added in a
-# later step together with the real CoreBluetooth implementation.
+# PICORB_PLATFORM_DARWIN (set in common.rb) makes build.darwin? true, which is
+# how picoruby-ble's mrbgem.rake selects its ports/darwin sources, builds the
+# CoreBluetooth Swift backend (PicoBLEDarwin) and links the resulting dylib.
 load File.expand_path("common.rb", __dir__)
 
 MRuby::Build.new do |conf|
@@ -27,5 +27,5 @@ MRuby::Build.new do |conf|
   conf.gem core: "picoruby-shinonome"
   conf.gem core: "picoruby-bin-r2p2"
   conf.gem core: "picoruby-bin-picoruby"
-  conf.gem core: "picoruby-ble"          # under development: Darwin/CoreBluetooth port
+  conf.gem core: "picoruby-ble"          # builds the Darwin/CoreBluetooth port
 end

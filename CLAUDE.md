@@ -1,11 +1,11 @@
 ## このリポジトリ
 
-`R2P2-macOS` ＝ 標準 PicoRuby / R2P2 を macOS host で動かす環境。依存する picoruby は
+`R2P2-macOS` ＝ 標準 PicoRuby / R2P2 を macOS host で build/run する harness。依存する picoruby は
 **GitHub upstream `picoruby/picoruby` を `rake setup` で `vendor/picoruby` に取得**する
 （submodule 不使用・sibling fork 非依存）。ビルド出力は `MRUBY_BUILD_DIR=./build` に隔離し、
-取得した picoruby source は pristine に保つ。Mac ネイティブ能力（Apple Intelligence・BLE 等）は
-本リポジトリの `mrbgems/` として足す。`rubish`（amatsuda/rubish の PicoRuby 版・能力制限シェル）や
-Apple Intelligence デモは別リポジトリ `picoruby-mac` 側の実験であり、本リポジトリの責務ではない。
+取得した picoruby source は pristine に保つ。harness なので port source は持たない。Mac ネイティブ能力は
+upstream を汚さず `mrbgems/` として足す方針。BLE/CoreBluetooth port は picoruby tree 側に住み（upstream 提案中）、
+本リポジトリは `rake build:ble` で build し `test/ble-darwin/` で検証する役割。
 
 ## 行動
 

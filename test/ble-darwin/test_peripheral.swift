@@ -2,10 +2,10 @@
 // picoruby-ble Darwin central. Exposes one service (Device Information 0x180A)
 // with one readable characteristic (Manufacturer Name 0x2A29) and one
 // Characteristic-User-Description descriptor (0x2901). Advertises a local name so
-// AdvertisingReport#name_include? can select it. Run on a second Mac, or the same
-// Mac as the central (macOS routes BLE locally):
+// AdvertisingReport#name_include? can select it. Run it on a SECOND device: a Mac
+// acting as central cannot receive advertisements from a peripheral on the same Mac.
 //
-//   swift ports/darwin/test/test_peripheral.swift
+//   swift test/ble-darwin/test_peripheral.swift
 //
 // Leave it running (it serves a run loop) while the central scans/connects/reads.
 
