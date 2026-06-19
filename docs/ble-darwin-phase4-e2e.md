@@ -27,11 +27,16 @@ swiftc pble_test_peripheral.swift -o pble_peri && ./pble_peri
 ```
 起動したまま放置（run loop）。期待値は char 値 `PBLE-TEST-MFR`、descriptor 値 `pble-demo-desc`。
 
-### 選択 B: iOS デバイスのアプリ（nRF Connect / LightBlue）
+### 選択 B: iOS の nRF Connect（導入済み）
 
-- アプリで GATT server を構成し、**readable な characteristic を 1 つ**（できれば descriptor も）持つ service を作って advertise する。**local name を `PBLE-TEST`** にする（別名にするなら下の central スクリプトの `name_include?` 文字列を合わせる）。
-- アプリは**フォアグラウンド維持**（iOS は背景化すると local name を広告しない）。
-- char 値はアプリで設定した値が読めれば OK（E2E スクリプトの PASS 判定は固定値 `PBLE-TEST-MFR` を見るので、選択 B では値一致でなく「ツリーが構築され `:TC_IDLE` に到達」を確認する。スクリプトの判定文字列を実機の値に合わせてもよい）。
+nRF Connect for iOS は peripheral（GATT server + advertiser）に対応している。**ラベルはバージョンで変わる**が流れは次の通り（概念は不変: GATT server を構成 → advertiser packet に Complete Local Name と Connectable を入れて開始）:
+
+1. **GATT server を構成**: メニュー（ハンバーガー or 設定）→「Configure GATT Server」。Service を 1 つ追加（Device Information `0x180A` などの標準でも、Add Custom でも可）。その下に **Characteristic を 1 つ追加し、Properties に Read を付け、value（例: テキスト `hello`）を設定**。任意で Descriptor も追加。
+2. **Advertiser を作成**: 「Advertiser」タブ →「+」で新規 advertising packet → **Complete Local Name = `PBLE-TEST`** を追加（central はこの名前で選ぶ）。**Connectable を ON**。可能なら service UUID も追加（iOS は advertising 部のカスタム UUID に制限があるので入らなくても可）。
+3. その advertiser を**トグル ON で送信開始**。**nRF Connect をフォアグラウンドに保つ**（背景化で local name が落ちる）。
+4. char 値は任意。E2E driver の PASS 判定は「connect→discover→**characteristic 値を 1 つでも read 成功**」なので、固定値一致は不要。
+
+名前を `PBLE-TEST` 以外にした／advertiser に名前が入らない場合は、driver が **RSSI 最強のデバイス**に繋ぐので **iOS デバイスを Mac に密着**させればよい（driver 冒頭の `TARGET_NAME` を空 `""` にすると常に最強選択）。
 
 ## central を走らせる（中央 Mac、このリポジトリで）
 
@@ -39,18 +44,18 @@ swiftc pble_test_peripheral.swift -o pble_peri && ./pble_peri
 build-ble/host/bin/picoruby \
   /path/to/picoruby-ble-apple_silicon-port/mrbgems/picoruby-ble/ports/darwin/test/step3_e2e_central.rb
 ```
-スクリプトは scan(15s) →`PBLE-TEST` 発見で connect → discover → read を 1 つの poll loop で駆動し、ツリーを表示する。
+driver は `TARGET_NAME`（既定 `"PBLE-TEST"`）を広告するデバイスがあれば即 connect、無ければ **RSSI 最強**のデバイスに connect し、1 つの poll loop で discover→read まで駆動してツリーを表示する。`TARGET_NAME = ""` にすると常に最強選択。
 
-期待出力（選択 A の場合）:
+期待出力（選択 A の fixture 例）:
 ```
-[central] found PBLE-TEST (rssi=...); connecting
+[central] connecting to "PBLE-TEST" rssi=-40
 [central] discovery done; state=TC_OFF services=1
   svc uuid32=0x0A180000 1..N
     char uuid32=0x292A0000 vh=3 props=2 value="PBLE-TEST-MFR"
       desc uuid32=0x01290000 handle=4 value="pble-demo-desc"
-E2E PASS: characteristic value read end-to-end
+E2E PASS: connect -> discover -> read characteristic value end-to-end
 ```
-（uuid32 は `uuid128_to_uuid32` の Base-UUID quirk により 16bit 値が上位に来る。値・props=2(READ)・descriptor 値が読めれば成功。）
+PASS 判定は「`services>=1` かつ characteristic 値を 1 つでも read 成功」。uuid32 は `uuid128_to_uuid32` の Base-UUID quirk で 16bit 値が上位に来る（0x180A→0x0A180000）。値・props=2(READ)・descriptor が読めていれば GATT パス成立。選択 B（nRF Connect）では service/char/値はアプリ設定どおりに出る。
 
 ## Phase3 — ThreadSanitizer（任意・強く推奨）
 
