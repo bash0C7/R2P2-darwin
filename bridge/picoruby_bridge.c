@@ -13,10 +13,12 @@
 #include "picoruby_bridge.h"
 
 #ifndef HEAP_SIZE
-#define HEAP_SIZE (1024 * 2000)
+/* 8 MB heap; the default 2 MB is insufficient on iOS arm64 where the
+ * compiled Ruby VM + compiler + task scheduler has a larger footprint
+ * than the host x86_64 build. */
+#define HEAP_SIZE (1024 * 8000)
 #endif
 
-static uint8_t vm_heap[HEAP_SIZE] __attribute__((aligned(16)));
 mrb_state *global_mrb = NULL;
 
 /* The reduced VM has core `print` but no `puts`; define puts via print. One
@@ -48,7 +50,17 @@ char *picoruby_eval(const char *src) {
   dup2(fileno(cap), 1);
   dup2(fileno(cap), 2);
 
-  mrb_state *mrb = mrb_open_with_custom_alloc(vm_heap, HEAP_SIZE);
+  /* Allocate a fresh, zero-initialized heap for each eval.
+   * Using calloc (zero-initialized) ensures estalloc starts from a
+   * known-good state and stale pointers from a previous run do not persist. */
+  uint8_t *heap = (uint8_t *)calloc(1, HEAP_SIZE);
+  if (heap == NULL) {
+    dup2(saved_out, 1); dup2(saved_err, 2);
+    close(saved_out); close(saved_err);
+    fclose(cap); free(combined);
+    return NULL;
+  }
+  mrb_state *mrb = mrb_open_with_custom_alloc(heap, HEAP_SIZE);
   global_mrb = mrb;
   if (mrb) {
     mrc_ccontext *cc = mrc_ccontext_new(mrb);
@@ -86,6 +98,7 @@ char *picoruby_eval(const char *src) {
     mrb_close(mrb);
     global_mrb = NULL;
   }
+  free(heap);
 
   fflush(stdout); fflush(stderr);
   dup2(saved_out, 1); dup2(saved_err, 2);

@@ -99,9 +99,13 @@ namespace :ios do
 
   desc "Build the app for the iOS Simulator"
   task :build do
+    # libmruby.a is arm64 only (cross-built for iphonesimulator/arm64).
+    # Restrict xcodebuild to arm64 so the linker does not reject the library
+    # when building the x86_64 slice for the generic simulator destination.
     sh "xcodebuild -project #{File.join(APP_DIR, "PicoRubyRunner.xcodeproj").shellescape} " \
        "-scheme PicoRubyRunner -destination 'generic/platform=iOS Simulator' " \
-       "-derivedDataPath #{File.join(ROOT, "build", "ios-app").shellescape} build"
+       "-derivedDataPath #{File.join(ROOT, "build", "ios-app").shellescape} " \
+       "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS=x86_64 build"
   end
 
   desc "Boot a simulator, install, and launch the app"
