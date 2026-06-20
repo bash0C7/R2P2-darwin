@@ -1,0 +1,9 @@
+# fetched picoruby tree (kept pristine; rebuilt via rake setup)
+/vendor/
+# build output
+/build/
+# staged lib + headers + generated project
+/app/Vendor/
+/app/*.xcodeproj
+# process docs
+/docs/superpowers/
