@@ -135,9 +135,36 @@ end
 
 desc "Compile + run the bridge smoke test on the host"
 task smoke: "host:lib" do
-  lib = File.join(BUILD_DIR, "host", "lib", "libmruby.a")
-  out = "/tmp/picoruby_smoke"
-  sh "clang -I #{File.join(PICORUBY_SRC, "include").shellescape} -I #{File.join(ROOT, "bridge").shellescape} " \
+  lib    = File.join(BUILD_DIR, "host", "lib", "libmruby.a")
+  out    = "/tmp/picoruby_smoke"
+
+  # Defines must match the host build config (r2p2-picoruby-host.rb) so the
+  # bridge sees the same ABI (no-boxing, int64, estalloc, task scheduler).
+  defines = %w[
+    PICORB_ALLOC_ESTALLOC PICORB_ALLOC_ALIGN=8
+    MRB_NO_BOXING MRB_INT64 MRB_UTF8_STRING
+    PICORB_PLATFORM_DARWIN
+    MRB_TICK_UNIT=4 MRB_TIMESLICE_TICK_COUNT=3
+    MRB_USE_TASK_SCHEDULER=1 MRB_USE_VM_SWITCH_DISPATCH=1
+  ].map { |d| "-D#{d}" }.join(" ")
+
+  # picoruby.h uses angle-bracket includes for mrc_common.h (mruby-compiler2),
+  # mruby.h (picoruby-mruby/lib/mruby), and prism.h (mruby-compiler2/lib/prism).
+  # build/host/include supplies the generated presym/id.h.
+  # task.h is in mruby-task/include.
+  includes = [
+    File.join(PICORUBY_SRC, "include"),
+    File.join(PICORUBY_SRC, "mrbgems", "mruby-compiler2", "include"),
+    File.join(PICORUBY_SRC, "mrbgems", "mruby-compiler2", "lib", "prism", "include"),
+    File.join(PICORUBY_SRC, "mrbgems", "picoruby-mruby", "lib", "mruby", "include"),
+    File.join(PICORUBY_SRC, "mrbgems", "picoruby-mruby", "include"),
+    File.join(BUILD_DIR, "host", "include"),
+    File.join(PICORUBY_SRC, "mrbgems", "picoruby-mruby", "lib", "mruby",
+              "mrbgems", "mruby-task", "include"),
+    File.join(ROOT, "bridge"),
+  ].map { |p| "-I #{p.shellescape}" }.join(" ")
+
+  sh "clang #{defines} #{includes} " \
      "#{File.join(ROOT, "bridge", "smoke_test.c").shellescape} " \
      "#{File.join(ROOT, "bridge", "picoruby_bridge.c").shellescape} " \
      "#{lib.shellescape} -o #{out.shellescape}"
