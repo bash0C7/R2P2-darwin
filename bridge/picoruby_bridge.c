@@ -34,7 +34,7 @@ static void print_diagnostics(mrc_ccontext *cc) {
   }
 }
 
-char *picoruby_eval(const char *src) {
+char *repl_eval(const char *src) {
   /* prepend the puts shim */
   size_t shim_len = strlen(PUTS_SHIM);
   size_t src_len = strlen(src);

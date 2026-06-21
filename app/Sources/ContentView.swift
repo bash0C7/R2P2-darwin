@@ -30,7 +30,7 @@ struct ContentView: View {
     private func run() {
         // Run picoruby on a background thread to avoid blocking SwiftUI layout.
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let cstr = picoruby_eval(self.source) else {
+            guard let cstr = repl_eval(self.source) else {
                 NSLog("[PicoRubyRunner] eval returned NULL")
                 DispatchQueue.main.async {
                     self.output = "(VM failed to start)"

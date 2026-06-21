@@ -4,7 +4,7 @@
 #include "picoruby_bridge.h"
 
 static int check(const char *label, const char *src, const char *needle) {
-  char *out = picoruby_eval(src);
+  char *out = repl_eval(src);
   if (out == NULL) { printf("FAIL %s: NULL\n", label); return 1; }
   int ok = strstr(out, needle) != NULL;
   printf("%s %s: %s", ok ? "PASS" : "FAIL", label, out);
