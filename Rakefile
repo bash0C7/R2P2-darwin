@@ -93,6 +93,22 @@ namespace :ios do
     puts "Staged libmruby.a + headers under #{VENDOR_DIR}"
   end
 
+  namespace :device do
+    desc "Cross-build libmruby.a for an iOS device (iphoneos arm64) and stage under app/Vendor"
+    task lib: :setup do
+      cfg = File.join(ROOT, "build_config", "r2p2-picoruby-ios-device.rb")
+      sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
+      lib = File.join(BUILD_DIR, "ios-device", "lib", "libmruby.a")
+      raise "expected #{lib} not found" unless File.file?(lib)
+      rm_rf VENDOR_DIR
+      mkdir_p File.join(VENDOR_DIR, "lib")
+      mkdir_p File.join(VENDOR_DIR, "include")
+      cp lib, File.join(VENDOR_DIR, "lib", "libmruby.a")
+      cp_r File.join(PICORUBY_SRC, "include", "."), File.join(VENDOR_DIR, "include")
+      puts "Staged device libmruby.a + headers under #{VENDOR_DIR}"
+    end
+  end
+
   desc "Generate the Xcode project from project.yml"
   task :gen do
     sh "cd #{APP_DIR.shellescape} && xcodegen generate"
