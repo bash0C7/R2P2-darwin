@@ -7,4 +7,15 @@
  * only on allocation/setup failure (out of memory, or tmpfile() failure). */
 char *repl_eval(const char *src);
 
+/* Persistent VM. vm_open allocates a heap, opens a VM, and runs boot_src
+ * (which should define classes and assign a dispatcher object to the global
+ * $app). Returns an opaque handle, or NULL on failure. vm_call invokes
+ * `method` on $app with a single String argument `arg`, returning captured
+ * stdout+stderr as a malloc'd string the caller must free() (NULL on setup
+ * failure). vm_close tears the VM down. All three MUST be called from one
+ * thread. */
+void *vm_open(const char *boot_src);
+char *vm_call(void *vm, const char *method, const char *arg);
+void  vm_close(void *vm);
+
 #endif /* PICORUBY_BRIDGE_H */
