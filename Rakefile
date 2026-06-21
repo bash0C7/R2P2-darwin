@@ -108,6 +108,38 @@ namespace :ios do
     task lib: :setup do
       stage_libmruby("r2p2-picoruby-ios-device.rb", "ios-device", VENDOR_DIR)
     end
+
+    desc "Build the app, signed, for the connected iOS device"
+    task :build do
+      proj = File.join(APP_DIR, "PicoRubyRunner.xcodeproj")
+      # Target the SPECIFIC connected device (not generic/platform=iOS) so
+      # -allowProvisioningUpdates can register it with the Personal Team and
+      # generate a profile. Device slice is arm64; automatic signing resolves
+      # the team set in the example's project.yml.
+      dest = `xcodebuild -project #{proj.shellescape} -scheme PicoRubyRunner -showdestinations 2>/dev/null`.lines
+             .grep(/platform:iOS,/).reject { |l| l =~ /Simulator|placeholder/ }
+             .first&.match(/id:(\S+)/)&.captures&.first
+      raise "no connected iOS device destination (xcodebuild -showdestinations)" unless dest
+      sh "xcodebuild -project #{proj.shellescape} -scheme PicoRubyRunner " \
+         "-destination 'id=#{dest}' " \
+         "-derivedDataPath #{File.join(ROOT, "build", "ios-app-device").shellescape} " \
+         "ARCHS=arm64 -allowProvisioningUpdates build"
+    end
+
+    desc "Install and launch the app on the connected iOS device"
+    task :run do
+      derived = File.join(ROOT, "build", "ios-app-device")
+      app = Dir.glob(File.join(derived, "Build", "Products", "*-iphoneos", "PicoRubyRunner.app")).first
+      raise "app not built; run `rake ios:device:build`" unless app
+      dev = `xcrun devicectl list devices`.lines
+            .grep(/iPhone|iPad/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
+      raise "no connected iOS device (xcrun devicectl list devices)" unless dev
+      sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
+      sh "xcrun devicectl device process launch --console --device #{dev} #{BUNDLE_ID}"
+    end
+
+    desc "Full device pipeline: lib -> gen -> build -> run (needs a connected, signed device)"
+    task all: [:lib, "ios:gen", :build, :run]
   end
 
   namespace :stackchan do

@@ -46,3 +46,6 @@ targets:
           - "-lmruby"
         GENERATE_INFOPLIST_FILE: "YES"
         TARGETED_DEVICE_FAMILY: "1,2"
+        PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.PicoRubyRunner
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: SM5792D355
