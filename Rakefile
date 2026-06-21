@@ -15,6 +15,24 @@ def mruby_env(cfg)
   { "MRUBY_BUILD_DIR" => BUILD_DIR, "MRUBY_CONFIG" => File.absolute_path(cfg) }
 end
 
+# Cross-build libmruby.a with the given build_config and stage the archive +
+# picoruby headers under <vendor_dir>. `build_name` is the MRuby build name (the
+# build/<name>/ output dir). Shared by the repl (base) and Stack-chan tasks.
+def stage_libmruby(config_basename, build_name, vendor_dir)
+  cfg = File.join(ROOT, "build_config", config_basename)
+  sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
+  lib = File.join(BUILD_DIR, build_name, "lib", "libmruby.a")
+  raise "expected #{lib} not found" unless File.file?(lib)
+  rm_rf vendor_dir
+  mkdir_p File.join(vendor_dir, "lib")
+  mkdir_p File.join(vendor_dir, "include")
+  cp lib, File.join(vendor_dir, "lib", "libmruby.a")
+  cp_r File.join(PICORUBY_SRC, "include", "."), File.join(vendor_dir, "include")
+  puts "Staged #{build_name} libmruby.a + headers under #{vendor_dir}"
+end
+
+STACKCHAN_VENDOR = File.join(ROOT, "examples", "stackchan", "Vendor")
+
 # picoruby vendors mruby, which vendors prism (mrbgems/mruby-compiler-prism).
 # That prism checkout ships its templates but NOT the files they generate;
 # include/prism/diagnostic.h in particular is produced by templates/template.rb.
@@ -81,31 +99,28 @@ end
 namespace :ios do
   desc "Cross-build libmruby.a for the iOS Simulator and stage under app/Vendor"
   task lib: :setup do
-    cfg = File.join(ROOT, "build_config", "r2p2-picoruby-ios-sim.rb")
-    sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
-    lib = File.join(BUILD_DIR, "ios-sim", "lib", "libmruby.a")
-    raise "expected #{lib} not found" unless File.file?(lib)
-    rm_rf VENDOR_DIR
-    mkdir_p File.join(VENDOR_DIR, "lib")
-    mkdir_p File.join(VENDOR_DIR, "include")
-    cp lib, File.join(VENDOR_DIR, "lib", "libmruby.a")
-    cp_r File.join(PICORUBY_SRC, "include", "."), File.join(VENDOR_DIR, "include")
-    puts "Staged libmruby.a + headers under #{VENDOR_DIR}"
+    # Base (BLE-free) config — keeps the REPL example self-contained.
+    stage_libmruby("r2p2-picoruby-ios-sim.rb", "ios-sim", VENDOR_DIR)
   end
 
   namespace :device do
     desc "Cross-build libmruby.a for an iOS device (iphoneos arm64) and stage under app/Vendor"
     task lib: :setup do
-      cfg = File.join(ROOT, "build_config", "r2p2-picoruby-ios-device.rb")
-      sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
-      lib = File.join(BUILD_DIR, "ios-device", "lib", "libmruby.a")
-      raise "expected #{lib} not found" unless File.file?(lib)
-      rm_rf VENDOR_DIR
-      mkdir_p File.join(VENDOR_DIR, "lib")
-      mkdir_p File.join(VENDOR_DIR, "include")
-      cp lib, File.join(VENDOR_DIR, "lib", "libmruby.a")
-      cp_r File.join(PICORUBY_SRC, "include", "."), File.join(VENDOR_DIR, "include")
-      puts "Staged device libmruby.a + headers under #{VENDOR_DIR}"
+      stage_libmruby("r2p2-picoruby-ios-device.rb", "ios-device", VENDOR_DIR)
+    end
+  end
+
+  namespace :stackchan do
+    desc "Cross-build libmruby.a (Simulator) WITH picoruby-ble + Darwin port and stage under examples/stackchan/Vendor"
+    task lib: :setup do
+      stage_libmruby("r2p2-picoruby-ios-stackchan-sim.rb", "ios-stackchan-sim", STACKCHAN_VENDOR)
+    end
+
+    namespace :device do
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-ble + Darwin port and stage under examples/stackchan/Vendor"
+      task lib: :setup do
+        stage_libmruby("r2p2-picoruby-ios-stackchan-device.rb", "ios-stackchan-device", STACKCHAN_VENDOR)
+      end
     end
   end
 
