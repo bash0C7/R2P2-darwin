@@ -48,6 +48,10 @@ EXAMPLE         default: repl   (which examples/<name> the base ios:* tasks buil
 
 ## Examples
 
+Each example has its own README explaining where and how PicoRuby is used:
+[`examples/repl`](examples/repl/README.md) and
+[`examples/virtual-peripheral`](examples/virtual-peripheral/README.md).
+
 ### `repl` — evaluate Ruby on the device
 
 A SwiftUI app with a text field, a Run button, and an output view wired to the
