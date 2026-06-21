@@ -73,7 +73,7 @@ MRuby::CrossBuild.new("ios-vperiph-sim") do |conf|
   # The gem lives in the bash0C7 picoruby fork worktree (its iOS-ready
   # Package.swift + generated PicoBLEDarwin-Swift.h), not in vendor/picoruby.
   ble_gemdir = ENV["PICORUBY_BLE_GEMDIR"] ||
-    File.expand_path("../../picoruby-ble-darwin-port/mrbgems/picoruby-ble", __dir__)
+    File.expand_path("../vendor/picoruby/mrbgems/picoruby-ble", __dir__)
 
   # ports/darwin/*.c do `#include "PicoBLEDarwin-Swift.h"`, which lives in the
   # port's Swift package ext dir, not next to the .c. Put it on the include path.

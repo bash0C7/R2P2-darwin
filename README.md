@@ -40,8 +40,8 @@ rake check                    # verifies full Xcode / iOS SDK / xcodegen
 The picoruby tree and deployment target are selectable by env:
 
 ```
-PICORUBY_REPO   default: https://github.com/picoruby/picoruby.git
-PICORUBY_REF    default: master
+PICORUBY_REPO   default: https://github.com/bash0C7/picoruby.git
+PICORUBY_REF    default: picoruby-ble-darwin-port  (master + picoruby-ble Darwin port)
 IOS_MIN         default: 17.0   (iOS deployment minimum)
 EXAMPLE         default: repl   (which examples/<name> the base ios:* tasks build)
 ```
@@ -73,8 +73,9 @@ notify) live in it, running in a persistent VM. CoreBluetooth is driven through
 picoruby-ble's Darwin port — there is no Swift CoreBluetooth code; Swift only
 hosts the VM (a tick timer) and a read-only log. It advertises a Heart Rate
 profile as `PBLE-TEST` and answers reads, writes, and subscriptions out of
-`app.rb`. Needs the picoruby-ble Darwin port from the `bash0C7/picoruby` fork —
-see the [example README](examples/virtual-peripheral/README.md#dependencies).
+`app.rb`. The picoruby-ble Darwin port ships in the `bash0C7/picoruby` fork that is
+the default `vendor/picoruby` source — see the
+[example README](examples/virtual-peripheral/README.md#dependencies).
 
 ```
 rake ios:vperiph:all          # Simulator (advertising needs a real radio)
@@ -117,6 +118,13 @@ bridge/picoruby_bridge.c   ──▶  libmruby.a (iOS arm64)
   `rake smoke` can exercise the bridge quickly.
 - An example that needs extra gems (e.g. BLE) carries its own example-specific
   build config, so it never drags dependencies into the other examples' link.
+
+Gems are linked statically; there is no runtime `require`. Every mrbgem selected
+by the build config is compiled into `libmruby.a`, and its classes are registered
+when the VM opens, so the example Ruby references them directly — `virtual-peripheral`'s
+`app.rb` uses `BLE` with no `require`. The reduced VM has no POSIX/VFS, so file-based
+`require` is not available in the first place. To make a class available to an
+example, add its gem to that example's build config, not a `require` in Ruby.
 
 ## Constraints worth knowing
 

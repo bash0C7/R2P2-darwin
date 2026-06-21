@@ -8,7 +8,7 @@ packages:
   # resolve the undefined references in the staged libmruby.a at app link time;
   # the peripheral GATT server runs entirely inside it, driven by app.rb.
   PicoBLEDarwin:
-    path: ../../../picoruby-ble-darwin-port/mrbgems/picoruby-ble/ports/darwin/ext
+    path: ../../vendor/picoruby/mrbgems/picoruby-ble/ports/darwin/ext
 targets:
   VirtualPeripheral:
     type: application

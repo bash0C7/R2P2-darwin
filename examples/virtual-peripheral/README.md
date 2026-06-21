@@ -54,61 +54,49 @@ VMExecutor timer ── vm_call("tick") ─▶ VirtualPeripheral#tick
 `tick` returns nothing; it `print`s log lines, which `vm_call` returns as captured
 stdout for the on-screen log.
 
-### The reduced VM and offline blob generation
+### PicoRuby builds the profile (no pack/chr)
 
-The reduced PicoRuby VM on iOS has no `Array#pack` / `String#<<` / `Integer#chr` /
-`sprintf`. `BLE::GattDatabase` and `BLE::AdvertisingData` build their byte blobs
-with `pack`/`<<`, so they cannot run on-device. So `tools/gen_profile.rb` runs the
-**real** `GattDatabase` / `AdvertisingData` under CRuby (which has `pack`/`<<`) and
-emits `PROFILE_DATA` (the BTstack ATT-DB blob), `ADV_DATA` (the AD-TLV blob), and a
-256-byte `BYTE_TABLE` as frozen string literals, which are pasted into `app.rb`.
-The blobs are **byte-identical to what rp2040 compiles**, so the profile and the
-portability are preserved; only the build step moves offline. The live behaviour
-(`app.rb` below the literals) is written for the reduced VM — `getbyte`, `+`,
-`[i,1]`, and `BYTE_TABLE[n, 1]` for the int→byte conversion `chr` would otherwise do.
+PicoRuby's `String`/`Array` here do not carry `Array#pack` / `String#<<` /
+`Integer#chr` — this is PicoRuby, not CRuby. So `app.rb` builds the BTstack ATT-DB
+`profile_data` and the AD-TLV `adv_data` at runtime with the bit-operation
+equivalents:
+
+- int → 1-byte string: a slice into a fixed 256-byte table, `BYTE_TABLE[n, 1]` —
+  the stand-in for `pack("C")` / `chr` (materialising a byte needs a string that
+  already holds it, so this one literal table is irreducible).
+- 16-bit little-endian: `byte(v) + byte(v >> 8)`.
+- concatenation: `+`.
+
+`build_profile` / `build_adv` mirror what `BLE::GattDatabase` / `BLE::AdvertisingData`
+do (add_service / add_characteristic / add_descriptor, handle assignment, length
+prefixes), so the bytes are **identical to what rp2040 compiles**. No offline step,
+no extra gem — the profile is built in Ruby on the device, as it is on a board.
 
 ## Dependencies
 
-This example needs two PicoRuby sources, neither of which is vendored here:
+This example needs the picoruby-ble **CoreBluetooth Darwin port**, which lives in
+the `bash0C7/picoruby` fork on branch `picoruby-ble-darwin-port`. That branch is a
+complete picoruby tree — upstream master plus picoruby-ble's `ports/darwin/` (the
+BLE peripheral/central port over CoreBluetooth) and the `PicoBLEDarwin` Swift
+package (`ports/darwin/ext`) that the C port calls and the app links.
 
-1. **Upstream picoruby** (`picoruby/picoruby`) — the core VM and compiler, fetched
-   into `vendor/picoruby` by `rake setup` (override with `PICORUBY_REPO` /
-   `PICORUBY_REF`, default `master`).
-
-2. **The picoruby-ble Darwin/CoreBluetooth port** — lives in the `bash0C7/picoruby`
-   fork on branch `picoruby-ble-darwin-port`. picoruby-ble's `ports/darwin/`
-   implements the BLE peripheral (and central) port over CoreBluetooth, plus the
-   Swift package (`ports/darwin/ext`, `PicoBLEDarwin`) that the C port calls and
-   that the app links. Upstream picoruby-ble does not yet carry this port, so the
-   example pulls the gem from the fork rather than from `vendor/picoruby`.
-
-### Getting the fork
-
-Clone it as a sibling of this repository (the default path the build config and
-`project.yml` expect):
+`rake setup` fetches it into `vendor/picoruby` — it is the repo's default
+`PICORUBY_REPO` / `PICORUBY_REF`, so a normal checkout is enough; nothing extra to
+clone. The build config and `project.yml` read picoruby-ble from `vendor/picoruby`.
+To build from upstream master instead (no Darwin BLE port), override the env:
 
 ```sh
-# from the directory that contains R2P2-iOS/
-git clone --branch picoruby-ble-darwin-port \
-  https://github.com/bash0C7/picoruby.git picoruby-ble-darwin-port
+PICORUBY_REPO=https://github.com/picoruby/picoruby.git PICORUBY_REF=master rake setup
 ```
 
-That yields `../picoruby-ble-darwin-port` next to `R2P2-iOS/`. To put it elsewhere,
-set `PICORUBY_BLE_GEMDIR` to the gem directory, e.g.:
-
-```sh
-export PICORUBY_BLE_GEMDIR=/path/to/picoruby/mrbgems/picoruby-ble
-```
-
-The build reads the fork's working tree directly (it is not committed into this
-repo and needs no separate fork build step), so a checkout of the branch is enough.
+`PICORUBY_BLE_GEMDIR` overrides just the picoruby-ble gem directory if you keep it
+elsewhere.
 
 ## Files
 
 | File | Role |
 |---|---|
-| `app.rb` | the peripheral: embedded `PROFILE_DATA`/`ADV_DATA`/`BYTE_TABLE` literals + the live `tick`/`packet_callback`/read/write/subscribe/notify behaviour |
-| `tools/gen_profile.rb` | offline generator (system Ruby): reuses the real `GattDatabase`/`AdvertisingData` to (re)produce the embedded literals |
+| `app.rb` | the peripheral: `build_profile`/`build_adv` (pack-free runtime builders) + the live `tick`/`packet_callback`/read/write/subscribe/notify behaviour |
 | `Sources/VMExecutor.swift` | one serial thread that owns the VM (`vm_open`/`vm_call`) and the tick timer |
 | `Sources/ContentView.swift` | read-only scrolling log of the printed tick output |
 | `Sources/App.swift` | the `@main` app entry |
@@ -133,8 +121,7 @@ Point — `app.rb` logs the bytes and resets the simulated rate.
 
 ## Changing the published profile
 
-The GATT profile is fixed in the embedded literals. To change it, edit the profile
-in `tools/gen_profile.rb` (services, characteristics, advertised name), run
-`ruby tools/gen_profile.rb`, and paste the regenerated `PROFILE_DATA` / `ADV_DATA` /
-`BYTE_TABLE` and the handle constants into `app.rb`. Keep GATT handles ≤ 255 (the
-Darwin port's event layout reads them as one byte).
+Edit `build_profile` / `build_adv` in `app.rb` directly (services, characteristics,
+advertised name) and the `HR_*` handle constants. Handles are assigned in build
+order (service=1, 0x2A37 decl=2, value=3, CCCD=4, 0x2A39 decl=5, value=6); keep them
+≤ 255 (the Darwin port's event layout reads them as one byte).
