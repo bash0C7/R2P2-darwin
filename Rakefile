@@ -17,7 +17,7 @@ end
 
 # Cross-build libmruby.a with the given build_config and stage the archive +
 # picoruby headers under <vendor_dir>. `build_name` is the MRuby build name (the
-# build/<name>/ output dir). Shared by the repl (base) and Stack-chan tasks.
+# build/<name>/ output dir). Shared by each example's lib task.
 def stage_libmruby(config_basename, build_name, vendor_dir)
   cfg = File.join(ROOT, "build_config", config_basename)
   sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
@@ -31,8 +31,6 @@ def stage_libmruby(config_basename, build_name, vendor_dir)
   puts "Staged #{build_name} libmruby.a + headers under #{vendor_dir}"
 end
 
-STACKCHAN_VENDOR = File.join(ROOT, "examples", "stackchan", "Vendor")
-
 # picoruby vendors mruby, which vendors prism (mrbgems/mruby-compiler-prism).
 # That prism checkout ships its templates but NOT the files they generate;
 # include/prism/diagnostic.h in particular is produced by templates/template.rb.
@@ -41,8 +39,8 @@ STACKCHAN_VENDOR = File.join(ROOT, "examples", "stackchan", "Vendor")
 # to fire the generator — so on a clean clone the header is missing and the
 # build aborts. Generate it here, right after fetch, so it always exists before
 # the first build. Idempotent: the generator overwrites with identical content,
-# and we skip entirely when the header is already present (e.g. a future
-# picoruby that generates it itself) or when the template layout has moved.
+# and we skip entirely when the header is already present (e.g. a picoruby
+# that generates it itself) or when the template layout has moved.
 PRISM_TEMPLATE_DIR = File.join(
   PICORUBY_SRC,
   "mrbgems", "picoruby-mruby", "lib", "mruby",
@@ -140,89 +138,6 @@ namespace :ios do
 
     desc "Full device pipeline: lib -> gen -> build -> run (needs a connected, signed device)"
     task all: [:lib, "ios:gen", :build, :run]
-  end
-
-  namespace :stackchan do
-    STACKCHAN_DIR     = File.join(ROOT, "examples", "stackchan")
-    STACKCHAN_PROJ    = File.join(STACKCHAN_DIR, "Stackchan.xcodeproj")
-    STACKCHAN_BUNDLE  = "com.bash0c7.picoruby.Stackchan"
-    STACKCHAN_DERIVED = File.join(ROOT, "build", "ios-stackchan-app")
-    STACKCHAN_DEVICE_DERIVED = File.join(ROOT, "build", "ios-stackchan-app-device")
-
-    desc "Cross-build libmruby.a (Simulator) WITH picoruby-ble + Darwin port and stage under examples/stackchan/Vendor"
-    task lib: :setup do
-      stage_libmruby("r2p2-picoruby-ios-stackchan-sim.rb", "ios-stackchan-sim", STACKCHAN_VENDOR)
-    end
-
-    namespace :device do
-      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-ble + Darwin port and stage under examples/stackchan/Vendor"
-      task lib: :setup do
-        stage_libmruby("r2p2-picoruby-ios-stackchan-device.rb", "ios-stackchan-device", STACKCHAN_VENDOR)
-      end
-
-      desc "Build the Stack-chan app, signed, for the connected iOS device"
-      task :build do
-        # Target the SPECIFIC connected device (not generic/platform=iOS) so
-        # -allowProvisioningUpdates can register it with the Personal Team and
-        # generate a profile. Device slice is arm64; automatic signing resolves
-        # the team set in examples/stackchan/project.yml.
-        dest = `xcodebuild -project #{STACKCHAN_PROJ.shellescape} -scheme Stackchan -showdestinations 2>/dev/null`.lines
-               .grep(/platform:iOS,/).reject { |l| l =~ /Simulator|placeholder/ }
-               .first&.match(/id:(\S+)/)&.captures&.first
-        raise "no connected iOS device destination (xcodebuild -showdestinations)" unless dest
-        sh "xcodebuild -project #{STACKCHAN_PROJ.shellescape} -scheme Stackchan " \
-           "-destination 'id=#{dest}' " \
-           "-derivedDataPath #{STACKCHAN_DEVICE_DERIVED.shellescape} " \
-           "ARCHS=arm64 -allowProvisioningUpdates build"
-      end
-
-      desc "Install and launch the Stack-chan app on the connected iOS device"
-      task :run do
-        app = Dir.glob(File.join(STACKCHAN_DEVICE_DERIVED, "Build", "Products",
-                                 "*-iphoneos", "Stackchan.app")).first
-        raise "app not built; run `rake ios:stackchan:device:build`" unless app
-        dev = `xcrun devicectl list devices`.lines
-              .grep(/iPhone|iPad/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
-        raise "no connected iOS device (xcrun devicectl list devices)" unless dev
-        sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
-        sh "xcrun devicectl device process launch --console --device #{dev} #{STACKCHAN_BUNDLE}"
-      end
-
-      desc "Full Stack-chan device pipeline: lib -> gen -> build -> run (needs a connected, signed device)"
-      task all: [:lib, "ios:stackchan:gen", :build, :run]
-    end
-
-    desc "Generate the Stack-chan Xcode project from project.yml"
-    task :gen do
-      sh "cd #{STACKCHAN_DIR.shellescape} && xcodegen generate"
-    end
-
-    desc "Build the Stack-chan app for the iOS Simulator"
-    task :build do
-      # libmruby.a + the PicoBLEDarwin Swift package are arm64 only; restrict to
-      # arm64 so the linker does not reject them for the x86_64 simulator slice.
-      sh "xcodebuild -project #{STACKCHAN_PROJ.shellescape} " \
-         "-scheme Stackchan -destination 'generic/platform=iOS Simulator' " \
-         "-derivedDataPath #{STACKCHAN_DERIVED.shellescape} " \
-         "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS=x86_64 build"
-    end
-
-    desc "Boot a simulator, install, and launch the Stack-chan app"
-    task :run do
-      app = Dir.glob(File.join(STACKCHAN_DERIVED, "Build", "Products",
-                               "*-iphonesimulator", "Stackchan.app")).first
-      raise "app not built; run `rake ios:stackchan:build`" unless app
-      udid = `xcrun simctl list devices available`.lines
-             .grep(/iPhone/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
-      raise "no available iPhone simulator" unless udid
-      sh "xcrun simctl boot #{udid} 2>/dev/null; true"
-      sh "open -a Simulator"
-      sh "xcrun simctl install #{udid} #{app.shellescape}"
-      sh "xcrun simctl launch #{udid} #{STACKCHAN_BUNDLE}"
-    end
-
-    desc "Full Stack-chan Simulator pipeline: lib -> gen -> build -> run"
-    task all: [:lib, :gen, :build, :run]
   end
 
   namespace :vperiph do

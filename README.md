@@ -1,104 +1,148 @@
 # R2P2-iOS
 
-A self-contained harness for building and running **PicoRuby on iOS**. It
-cross-builds picoruby into a static library for the iOS Simulator and links it
-into a small SwiftUI app that evaluates Ruby at runtime.
+A self-contained harness for building and running PicoRuby on iOS — on the
+Simulator and on a signed physical device. It cross-builds picoruby into a
+static library, links it into SwiftUI apps through a thin C bridge, and ships
+examples that put the application's behavior in Ruby.
 
 ## What this is
 
 `R2P2-iOS` connects picoruby to the iOS build system (Xcode / xcodebuild /
 Simulator / signing). It is the analogue of **R2P2-ESP32** on the iOS axis: a
-permanent, self-contained harness. It does **not** depend on R2P2-macOS — iOS is
-its own external build system, the way ESP-IDF is for R2P2-ESP32.
+permanent, self-contained harness, because iOS is its own substantial external
+build system the way ESP-IDF is. It does **not** depend on R2P2-macOS.
+
+picoruby is a common PicoRuby core whose mrbgems carry per-architecture
+implementations under `mrbgems/<gem>/ports/<arch>/` (rp2040 / posix / esp32 /
+darwin …) behind identical interfaces. R2P2-iOS's job is to hold the iOS
+**build configs** that select the iOS-appropriate ports, plus the C bridge and
+the example apps. iOS-specific glue lives here; the picoruby tree stays pristine.
 
 picoruby bakes the prism compiler into the VM, so the cross-built `libmruby.a`
-can compile and run Ruby source at runtime, on the device. The app is just a
-text field, a Run button, and an output view wired to a thin C bridge.
-
-## Status
-
-- **Works:** Ruby runs on the iOS Simulator (arm64). `puts "hello #{1 + 2}"`
-  prints `hello 3`; `raise "boom"` surfaces the exception without crashing the app.
-- **Scope:** Simulator only, no Apple Developer enrollment needed (free Apple ID).
-  On-device signing and BLE / CoreBluetooth are deliberate follow-ups, not here yet.
+compiles and runs Ruby source at runtime, on the device.
 
 ## Setup
 
 ```
 # full Xcode.app (App Store) — the iOS SDK / Simulator / xcodebuild live here;
-# Command Line Tools alone are NOT enough. After installing, point the toolchain
-# at it (one-time, needs sudo):
+# Command Line Tools alone are NOT enough. Point the toolchain at it (needs sudo):
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 sudo xcodebuild -license accept
 
-brew install xcodegen        # generates the Xcode project from app/project.yml
+brew install xcodegen         # generates each example's Xcode project
 # Ruby — any ambient install (rbenv / asdf / system) >= 2.7
 ```
 
 ```
-rake check                   # verifies full Xcode / iOS SDK / xcodegen
+rake check                    # verifies full Xcode / iOS SDK / xcodegen
 ```
 
-## Run it
-
-One command fetches picoruby, cross-builds the lib, generates the project,
-builds, and launches the app on a Simulator — fully headless:
-
-```
-rake ios
-```
-
-`rake ios` chains: `ios:lib` → `ios:gen` → `ios:build` → `ios:run`. The app runs
-the default snippet on launch (so it prints immediately) and re-runs whatever you
-type when you tap **Run**.
-
-Individual steps:
-
-```
-rake setup                   # fetch picoruby into vendor/picoruby
-rake ios:lib                 # cross-build libmruby.a (arm64 iphonesimulator) → app/Vendor
-rake ios:gen                 # xcodegen generate
-rake ios:build               # xcodebuild for the Simulator
-rake ios:run                 # boot a simulator, install, launch
-rake smoke                   # host-side smoke test of the C bridge
-rake clean                   # remove build output
-rake clobber                 # also remove vendor/picoruby
-```
-
-The picoruby tree is selectable:
+The picoruby tree and deployment target are selectable by env:
 
 ```
 PICORUBY_REPO   default: https://github.com/picoruby/picoruby.git
 PICORUBY_REF    default: master
-IOS_MIN         default: 17.0   (iOS Simulator deployment min)
+IOS_MIN         default: 17.0   (iOS deployment minimum)
+EXAMPLE         default: repl   (which examples/<name> the base ios:* tasks build)
 ```
+
+## Examples
+
+### `repl` — evaluate Ruby on the device
+
+A SwiftUI app with a text field, a Run button, and an output view wired to the
+bridge. It compiles and runs whatever you type and shows the captured output;
+`puts "hello #{1 + 2}"` prints `hello 3`, `raise "boom"` surfaces the exception
+without crashing the app.
+
+```
+rake ios                      # Simulator: lib -> gen -> build -> run (headless)
+rake ios:device:all           # connected device: build, sign, install, launch
+```
+
+### `virtual-peripheral` — a BLE peripheral written in Ruby
+
+A PicoRuby-first virtual BLE peripheral, useful as a test stub for debugging a
+BLE *central*. The **GATT profile and every per-event behavior** (read / write /
+subscribe / notify) live in `examples/virtual-peripheral/app.rb`, running in a
+persistent VM; Swift is only the `CBPeripheralManager` radio, the bridge, and a
+read-only scrolling log of every event. It advertises a Heart Rate profile as
+`PBLE-TEST` and answers reads, writes, and subscriptions out of `app.rb`.
+
+```
+rake ios:vperiph:all          # Simulator (advertising needs a real radio)
+rake ios:vperiph:device:all   # connected device: build, sign, install, launch
+rake ios:vperiph:write        # macOS BLE central helper that drives the peripheral
+```
+
+`rake ios:vperiph:write` builds and runs `tools/ble_write.swift`, a CoreBluetooth
+central that scans for `PBLE-TEST`, connects, reads, subscribes, and writes.
+`WRITE_HEX`, `TARGET_NAME`, and `APP_SERVICES` pass through the environment
+(e.g. `WRITE_HEX=02 rake ios:vperiph:write`).
+
+### On-device builds
+
+Device tasks build for the connected iPhone with automatic signing. Set
+`DEVELOPMENT_TEAM` in the example's `project.yml` to your own team (a free Apple
+ID works); the first launch of each bundle id needs a one-time on-device trust
+(Settings → General → VPN & Device Management → your Apple ID → Trust).
 
 ## How it fits together
 
 ```
-app/ (SwiftUI)  ──▶  bridge/picoruby_bridge.c  ──▶  libmruby.a (iOS arm64-sim)
-  ContentView        char *picoruby_eval(src)        prism compiler + mruby VM
-  Run / output       compiles + runs, captures        cross-built from vendor/picoruby
-                     stdout/stderr, returns a String   by build_config/r2p2-picoruby-ios-sim.rb
+examples/<name>/Sources (SwiftUI)
+        │  Swift ⇄ C bridging header
+        ▼
+bridge/picoruby_bridge.c   ──▶  libmruby.a (iOS arm64)
+  repl_eval(src)                  prism compiler + mruby VM
+  vm_open / vm_call / vm_close    cross-built from vendor/picoruby by
+                                  build_config/r2p2-picoruby-ios-{sim,device}.rb
 ```
 
-- `build_config/r2p2-picoruby-ios-sim.rb` — `MRuby::CrossBuild` targeting the
-  `iphonesimulator` SDK via `xcrun`.
-- `build_config/r2p2-picoruby-host.rb` — same gem set built for the host, used by
-  `rake smoke` to exercise the bridge quickly.
-- `bridge/picoruby_bridge.c` — evaluates Ruby and captures output (fd redirection).
+- `bridge/picoruby_bridge.c` — `repl_eval(src)` evaluates Ruby in a fresh VM and
+  captures stdout/stderr; `vm_open`/`vm_call`/`vm_close` own a persistent VM and
+  invoke a method on the Ruby global `$app` (used by `virtual-peripheral`). One
+  owner thread touches the VM.
 - `bridge/task_hal_ios.c` — a polling task-scheduler HAL for iOS (no SIGALRM).
-- `app/` — the SwiftUI app and its `project.yml` (xcodegen).
+- `build_config/r2p2-picoruby-ios-{sim,device}.rb` — `MRuby::CrossBuild` for the
+  `iphonesimulator` / `iphoneos` SDKs via `xcrun`; the base reduced VM.
+- `build_config/r2p2-picoruby-host.rb` — the same gem set built for the host, so
+  `rake smoke` can exercise the bridge quickly.
+- An example that needs extra gems (e.g. BLE) carries its own example-specific
+  build config, so it never drags dependencies into the other examples' link.
 
 ## Constraints worth knowing
 
-To link cleanly on iOS, the VM is built with a **reduced gem set** (no
-`core`/`stdlib` gemboxes, no POSIX): the iOS-incompatible IO / VFS / machine-posix
-gems are dropped. Consequences for the Ruby you can run today:
+To link cleanly on iOS, the VM uses a **reduced gem set** — no `core`/`stdlib`
+gemboxes and no POSIX, so the iOS-incompatible IO / VFS / machine-posix gems are
+absent. The Ruby surface is therefore smaller than full mruby/CRuby:
 
-- **Present:** integer/float math, `String`, string interpolation (`"x #{1+2}"`),
-  `print` / `p`, `raise` and exception messages.
-- **`puts`:** not in the reduced VM (it normally comes from an IO gem) — the bridge
-  installs a small `puts` shim defined in terms of core `print`.
-- **Absent:** file IO, networking, and the rest of stdlib. Growing this surface
-  (and bringing up the R2P2 shell, BLE, on-device signing) is future work.
+- integer/float math, `String`, string interpolation, `print` / `p`, `raise`,
+  `Hash`/`Array` literals + `each`, `while`, ternary, default args, and
+  `begin`/`rescue` are available.
+- `puts` is not in the reduced VM (it comes from an IO gem); the bridge installs
+  a small `puts` shim defined in terms of core `print`.
+- `defined?`, `Array#pack`, `String#ord`, `Integer#chr`, `String#<<`, `sprintf`,
+  and `String#%` are absent. Probe new bundled Ruby against the host build
+  (`rake smoke`'s `libmruby.a`) before relying on it on-device.
+
+## Layout
+
+```
+R2P2-iOS/
+  Rakefile                          check / setup / smoke / ios:* / clean / clobber
+  build_config/
+    r2p2-picoruby-ios-sim.rb        base reduced VM, iphonesimulator (CrossBuild)
+    r2p2-picoruby-ios-device.rb     base reduced VM, iphoneos (CrossBuild)
+    r2p2-picoruby-host.rb           same gem set, host build for rake smoke
+  bridge/
+    picoruby_bridge.{c,h}           repl_eval + persistent vm_open/vm_call/vm_close
+    task_hal_ios.c                  polling task-scheduler HAL (no SIGALRM)
+    smoke_test.c                    host-side bridge exercise
+  examples/
+    repl/                           evaluate Ruby on the device
+    virtual-peripheral/             a BLE peripheral whose behavior lives in app.rb
+      tools/ble_write.swift         macOS BLE central helper
+  vendor/picoruby/                  fetched by rake setup (gitignored)
+  build/                            build output, MRUBY_BUILD_DIR (gitignored)
+```

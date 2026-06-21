@@ -48,7 +48,7 @@ targets:
         OTHER_LDFLAGS:
           - "-lmruby"
         GENERATE_INFOPLIST_FILE: "YES"
-        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Advertise a virtual BLE peripheral so a central (e.g. the PC stackchan) can connect for testing."
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Advertise a virtual BLE peripheral so a central can connect for testing."
         INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription: "Advertise a virtual BLE peripheral so a central can connect for testing."
         TARGETED_DEVICE_FAMILY: "1,2"
         PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.VirtualPeripheral
