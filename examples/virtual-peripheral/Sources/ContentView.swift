@@ -1,18 +1,20 @@
 import SwiftUI
 
+// Read-only view over the peripheral's activity. All behavior lives in app.rb;
+// this view boots the VM and appends whatever each tick prints. Swift holds no
+// BLE logic — the GATT server is the picoruby-ble Darwin port, driven by Ruby.
 struct ContentView: View {
-    @StateObject private var peripheral = PeripheralManager()
-    @FocusState private var focused: Bool
+    @State private var log: String = "Starting VM…"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Virtual BLE Peripheral").font(.headline)
-            Text("Advertising a PicoRuby-defined GATT profile. Connect from a BLE central; activity streams below.")
+            Text("A PicoRuby-defined GATT profile, served by the picoruby-ble Darwin port. Connect from a BLE central; activity streams below.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(peripheral.log.isEmpty ? "—" : peripheral.log)
+                    Text(log.isEmpty ? "—" : log)
                         .font(.system(.footnote, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
@@ -20,22 +22,23 @@ struct ContentView: View {
                 }
                 .frame(maxHeight: .infinity)
                 .border(.gray)
-                .onChange(of: peripheral.log) { _, _ in
-                    proxy.scrollTo("LOGEND", anchor: .bottom)
-                }
+                .onChange(of: log) { _, _ in proxy.scrollTo("LOGEND", anchor: .bottom) }
             }
         }
         .padding()
-        // The log is read-only, so the software keyboard never appears. These
-        // are defensive: if any focusable control is ever added, a tap anywhere
-        // or the keyboard "Done" button dismisses it so it can't cover the log.
-        .contentShape(Rectangle())
-        .onTapGesture { focused = false }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focused = false }
-            }
+        .onAppear { boot() }
+    }
+
+    private func boot() {
+        guard let url = Bundle.main.url(forResource: "app", withExtension: "rb"),
+              let src = try? String(contentsOf: url, encoding: .utf8) else {
+            log = "(could not read bundled app.rb)"
+            return
+        }
+        log = ""
+        VMExecutor.shared.start(bootSource: src) { line in
+            if self.log.count > 8000 { self.log = String(self.log.suffix(6000)) }
+            self.log += (self.log.isEmpty ? "" : "\n") + line
         }
     }
 }

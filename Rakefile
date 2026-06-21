@@ -148,15 +148,15 @@ namespace :ios do
     VPERIPH_DERIVED = File.join(ROOT, "build", "ios-vperiph-app")
     VPERIPH_DEVICE_DERIVED = File.join(ROOT, "build", "ios-vperiph-app-device")
 
-    desc "Cross-build libmruby.a (Simulator, base reduced VM) and stage under examples/virtual-peripheral/Vendor"
+    desc "Cross-build libmruby.a (Simulator) WITH picoruby-ble + Darwin port and stage under examples/virtual-peripheral/Vendor"
     task lib: :setup do
-      stage_libmruby("r2p2-picoruby-ios-sim.rb", "ios-sim", VPERIPH_VENDOR)
+      stage_libmruby("r2p2-picoruby-ios-vperiph-sim.rb", "ios-vperiph-sim", VPERIPH_VENDOR)
     end
 
     namespace :device do
-      desc "Cross-build libmruby.a (iphoneos arm64, base reduced VM) and stage under examples/virtual-peripheral/Vendor"
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-ble + Darwin port and stage under examples/virtual-peripheral/Vendor"
       task lib: :setup do
-        stage_libmruby("r2p2-picoruby-ios-device.rb", "ios-device", VPERIPH_VENDOR)
+        stage_libmruby("r2p2-picoruby-ios-vperiph-device.rb", "ios-vperiph-device", VPERIPH_VENDOR)
       end
 
       desc "Build the Virtual Peripheral app, signed, for the connected iOS device"

@@ -3,6 +3,12 @@ options:
   bundleIdPrefix: com.bash0c7.picoruby
   deploymentTarget:
     iOS: "17.0"
+packages:
+  # The Darwin (CoreBluetooth) BLE backend Swift package. Its pble_* C symbols
+  # resolve the undefined references in the staged libmruby.a at app link time;
+  # the peripheral GATT server runs entirely inside it, driven by app.rb.
+  PicoBLEDarwin:
+    path: ../../../picoruby-ble-darwin-port/mrbgems/picoruby-ble/ports/darwin/ext
 targets:
   VirtualPeripheral:
     type: application
@@ -16,6 +22,11 @@ targets:
           - "picoruby_bridge.c"
           - "picoruby_bridge.h"
           - "task_hal_ios.c"
+    dependencies:
+      # Dynamic Swift-package product: link AND embed so dyld can resolve the
+      # pble_* symbols (the framework lands in the app's Frameworks/ dir).
+      - package: PicoBLEDarwin
+        embed: true
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: Sources/VirtualPeripheral-Bridging-Header.h
@@ -39,8 +50,8 @@ targets:
           - "$(SRCROOT)/../../vendor/picoruby/mrbgems/mruby-compiler2/lib/prism/include"
           - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include"
           - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/include"
-          - "$(SRCROOT)/../../build/ios-sim/include"
-          - "$(SRCROOT)/../../build/ios-device/include"
+          - "$(SRCROOT)/../../build/ios-vperiph-sim/include"
+          - "$(SRCROOT)/../../build/ios-vperiph-device/include"
           - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
           - "$(SRCROOT)/../../bridge"
         LIBRARY_SEARCH_PATHS:
