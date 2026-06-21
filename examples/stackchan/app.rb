@@ -112,9 +112,10 @@ end
 # (CoreBluetooth) port: it scans for a Stack-chan advertising the Nordic UART
 # Service (NUS), connects, discovers the RX characteristic value handle, and
 # writes each ASCII frame to it. picoruby-ble is only present in the on-device /
-# Simulator VM, so this file guards every reference behind `defined?(BLE)`:
-# under host CRuby (test_frames.rb) BLE is absent and the recording `BleLink`
-# stub is used instead, keeping the frame encoders verifiable without a radio.
+# Simulator VM, so this file guards every reference behind `BLE_AVAILABLE`
+# (see above): under host CRuby (test_frames.rb) BLE is absent and the recording
+# `BleLink` stub is used instead, keeping the frame encoders verifiable without a
+# radio.
 
 # The Nordic UART Service and its RX (write) characteristic, the Stack-chan
 # firmware's command channel. `BLE::Utils.uuid` yields the 16-byte little-endian
@@ -124,6 +125,20 @@ NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 # Substring matched against the advertised local name to pick the robot.
 STACKCHAN_NAME = "StackChan"
+
+# Is the picoruby-ble `BLE` class linked into this VM? The reduced PicoRuby VM
+# (prism compiler) does NOT implement the `defined?` keyword — it compiles
+# `defined?(BLE)` as a method call that raises at boot — so probe for the
+# constant by referencing it and rescuing the NameError. True in the on-device /
+# Simulator VM (picoruby-ble linked); false under host CRuby (test_frames.rb),
+# which then falls back to the recording `BleLink` stub.
+BLE_AVAILABLE =
+  begin
+    BLE
+    true
+  rescue NameError
+    false
+  end
 
 # Recording stub: used under host CRuby (no BLE) and as a graceful fallback so
 # frames sent before a connection are not lost. Records and echoes frames.
@@ -155,7 +170,7 @@ class BleLink
   end
 end
 
-if defined?(BLE)
+if BLE_AVAILABLE
   # The picoruby-ble central. It overrides advertising_report_callback to connect
   # to the first peripheral whose advertised name contains STACKCHAN_NAME; after
   # connect the base class auto-discovers services/characteristics, leaving
@@ -225,10 +240,11 @@ if defined?(BLE)
         print frame
         return :pending
       end
-      bytes = frame.bytes
-      data = bytes.pack("C*")
+      # `frame` is already an ASCII String; the BLE write takes a String and
+      # sends its raw bytes (mrb_get_args "iiS" -> RSTRING_PTR/LEN). The reduced
+      # VM has no Array#pack, so do not round-trip through bytes.
       @ble.write_value_of_characteristic_without_response(
-        @ble.conn_handle, @rx_value_handle, data
+        @ble.conn_handle, @rx_value_handle, frame
       )
       print frame
       :ok
@@ -265,7 +281,7 @@ class Stackchan
   attr_reader :ble
 
   def initialize(ble = nil)
-    @ble = ble || (defined?(BLE) ? RealBleLink.new : BleLink.new)
+    @ble = ble || (BLE_AVAILABLE ? RealBleLink.new : BleLink.new)
   end
 
   # Scan/connect/discover/bind the Stack-chan's NUS RX. arg is ignored (vm_call
