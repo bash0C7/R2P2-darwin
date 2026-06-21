@@ -143,6 +143,12 @@ namespace :ios do
   end
 
   namespace :stackchan do
+    STACKCHAN_DIR     = File.join(ROOT, "examples", "stackchan")
+    STACKCHAN_PROJ    = File.join(STACKCHAN_DIR, "Stackchan.xcodeproj")
+    STACKCHAN_BUNDLE  = "com.bash0c7.picoruby.Stackchan"
+    STACKCHAN_DERIVED = File.join(ROOT, "build", "ios-stackchan-app")
+    STACKCHAN_DEVICE_DERIVED = File.join(ROOT, "build", "ios-stackchan-app-device")
+
     desc "Cross-build libmruby.a (Simulator) WITH picoruby-ble + Darwin port and stage under examples/stackchan/Vendor"
     task lib: :setup do
       stage_libmruby("r2p2-picoruby-ios-stackchan-sim.rb", "ios-stackchan-sim", STACKCHAN_VENDOR)
@@ -153,12 +159,38 @@ namespace :ios do
       task lib: :setup do
         stage_libmruby("r2p2-picoruby-ios-stackchan-device.rb", "ios-stackchan-device", STACKCHAN_VENDOR)
       end
-    end
 
-    STACKCHAN_DIR    = File.join(ROOT, "examples", "stackchan")
-    STACKCHAN_PROJ   = File.join(STACKCHAN_DIR, "Stackchan.xcodeproj")
-    STACKCHAN_BUNDLE = "com.bash0c7.picoruby.Stackchan"
-    STACKCHAN_DERIVED = File.join(ROOT, "build", "ios-stackchan-app")
+      desc "Build the Stack-chan app, signed, for the connected iOS device"
+      task :build do
+        # Target the SPECIFIC connected device (not generic/platform=iOS) so
+        # -allowProvisioningUpdates can register it with the Personal Team and
+        # generate a profile. Device slice is arm64; automatic signing resolves
+        # the team set in examples/stackchan/project.yml.
+        dest = `xcodebuild -project #{STACKCHAN_PROJ.shellescape} -scheme Stackchan -showdestinations 2>/dev/null`.lines
+               .grep(/platform:iOS,/).reject { |l| l =~ /Simulator|placeholder/ }
+               .first&.match(/id:(\S+)/)&.captures&.first
+        raise "no connected iOS device destination (xcodebuild -showdestinations)" unless dest
+        sh "xcodebuild -project #{STACKCHAN_PROJ.shellescape} -scheme Stackchan " \
+           "-destination 'id=#{dest}' " \
+           "-derivedDataPath #{STACKCHAN_DEVICE_DERIVED.shellescape} " \
+           "ARCHS=arm64 -allowProvisioningUpdates build"
+      end
+
+      desc "Install and launch the Stack-chan app on the connected iOS device"
+      task :run do
+        app = Dir.glob(File.join(STACKCHAN_DEVICE_DERIVED, "Build", "Products",
+                                 "*-iphoneos", "Stackchan.app")).first
+        raise "app not built; run `rake ios:stackchan:device:build`" unless app
+        dev = `xcrun devicectl list devices`.lines
+              .grep(/iPhone|iPad/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
+        raise "no connected iOS device (xcrun devicectl list devices)" unless dev
+        sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
+        sh "xcrun devicectl device process launch --console --device #{dev} #{STACKCHAN_BUNDLE}"
+      end
+
+      desc "Full Stack-chan device pipeline: lib -> gen -> build -> run (needs a connected, signed device)"
+      task all: [:lib, "ios:stackchan:gen", :build, :run]
+    end
 
     desc "Generate the Stack-chan Xcode project from project.yml"
     task :gen do
