@@ -106,15 +106,45 @@ module FrameCodec
   end
 end
 
-# The BLE transport seam. Phase 3 wires this to picoruby-ble: write(frame) will
-# write the ASCII frame to the Nordic UART RX characteristic (6e400002) of the
-# connected Stack-chan. Until then it records frames so the host frame tests and
-# the persistent-VM path are exercisable without a radio.
+# The BLE transport seam.
+#
+# `RealBleLink` (below) drives picoruby-ble's central role over the Darwin
+# (CoreBluetooth) port: it scans for a Stack-chan advertising the Nordic UART
+# Service (NUS), connects, discovers the RX characteristic value handle, and
+# writes each ASCII frame to it. picoruby-ble is only present in the on-device /
+# Simulator VM, so this file guards every reference behind `defined?(BLE)`:
+# under host CRuby (test_frames.rb) BLE is absent and the recording `BleLink`
+# stub is used instead, keeping the frame encoders verifiable without a radio.
+
+# The Nordic UART Service and its RX (write) characteristic, the Stack-chan
+# firmware's command channel. `BLE::Utils.uuid` yields the 16-byte little-endian
+# form that the discovered service/characteristic `uuid128` fields also use, so
+# the two compare directly.
+NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+# Substring matched against the advertised local name to pick the robot.
+STACKCHAN_NAME = "StackChan"
+
+# Recording stub: used under host CRuby (no BLE) and as a graceful fallback so
+# frames sent before a connection are not lost. Records and echoes frames.
 class BleLink
   attr_reader :sent
 
   def initialize
     @sent = []
+  end
+
+  def connected?
+    false
+  end
+
+  def connect
+    print "(no BLE in this VM; frames are recorded)\n"
+    false
+  end
+
+  def tick
+    nil
   end
 
   def write(frame)
@@ -125,13 +155,130 @@ class BleLink
   end
 end
 
+if defined?(BLE)
+  # The picoruby-ble central. It overrides advertising_report_callback to connect
+  # to the first peripheral whose advertised name contains STACKCHAN_NAME; after
+  # connect the base class auto-discovers services/characteristics, leaving
+  # @services populated and @state == :TC_IDLE.
+  class StackchanCentral < BLE
+    attr_reader :target
+
+    def initialize
+      super(:central)
+      @target = nil
+    end
+
+    def advertising_report_callback(adv_report)
+      return if @target
+      if adv_report.name_include?(STACKCHAN_NAME)
+        @target = adv_report
+        print "Found Stack-chan; connecting\n"
+        connect(adv_report)
+      end
+    end
+
+    def conn_handle
+      @conn_handle
+    end
+  end
+
+  # Real transport over the Darwin CoreBluetooth backend.
+  class RealBleLink
+    def initialize
+      @ble = StackchanCentral.new
+      @rx_value_handle = nil
+      @pending = []
+    end
+
+    def connected?
+      !@rx_value_handle.nil? &&
+        @ble.conn_handle != BLE::HCI_CON_HANDLE_INVALID
+    end
+
+    # Scan -> connect -> discover (all driven inside scan/connect's event loop) ->
+    # bind the NUS RX value handle. Returns true once the RX handle is bound.
+    def connect
+      return true if connected?
+      print "Scanning for Stack-chan (NUS)\n"
+      # On the Simulator no peripheral answers; scan simply times out.
+      @ble.scan(timeout_ms: 5000)
+      bind_rx
+      if connected?
+        print "Connected; RX value_handle bound\n"
+        flush_pending
+        true
+      else
+        print "No Stack-chan found\n"
+        false
+      end
+    end
+
+    # Pump BLE events (drains the Swift FIFO ~one packet per 100ms tick).
+    def tick
+      @ble.start(200) if connected?
+      nil
+    end
+
+    def write(frame)
+      unless connected?
+        @pending << frame
+        print frame
+        return :pending
+      end
+      bytes = frame.bytes
+      data = bytes.pack("C*")
+      @ble.write_value_of_characteristic_without_response(
+        @ble.conn_handle, @rx_value_handle, data
+      )
+      print frame
+      :ok
+    end
+
+    private
+
+    # Walk discovered services for the NUS, then its RX characteristic.
+    def bind_rx
+      want_service = BLE::Utils.uuid(NUS_SERVICE_UUID)
+      want_rx      = BLE::Utils.uuid(NUS_RX_CHAR_UUID)
+      @ble.services.each do |service|
+        next unless service[:uuid128] == want_service
+        service[:characteristics].each do |chara|
+          if chara[:uuid128] == want_rx
+            @rx_value_handle = chara[:value_handle]
+            return
+          end
+        end
+      end
+    end
+
+    def flush_pending
+      until @pending.empty?
+        write(@pending.shift)
+      end
+    end
+  end
+end
+
 # The dispatcher object the persistent-VM bridge calls. vm_call(method, arg)
 # invokes one of these with a single String arg from the Swift UI.
 class Stackchan
   attr_reader :ble
 
-  def initialize(ble = BleLink.new)
-    @ble = ble
+  def initialize(ble = nil)
+    @ble = ble || (defined?(BLE) ? RealBleLink.new : BleLink.new)
+  end
+
+  # Scan/connect/discover/bind the Stack-chan's NUS RX. arg is ignored (vm_call
+  # always passes one String). Returns nothing; output is captured via print.
+  def connect(arg = nil)
+    @ble.connect
+    nil
+  end
+
+  # Pump BLE events. Posted periodically by the Swift VM-owner thread.
+  def tick(arg = nil)
+    @ble.tick
+    nil
   end
 
   # arg: a face name, e.g. "joy".

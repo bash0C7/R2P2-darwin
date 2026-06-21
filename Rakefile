@@ -154,6 +154,43 @@ namespace :ios do
         stage_libmruby("r2p2-picoruby-ios-stackchan-device.rb", "ios-stackchan-device", STACKCHAN_VENDOR)
       end
     end
+
+    STACKCHAN_DIR    = File.join(ROOT, "examples", "stackchan")
+    STACKCHAN_PROJ   = File.join(STACKCHAN_DIR, "Stackchan.xcodeproj")
+    STACKCHAN_BUNDLE = "com.bash0c7.picoruby.Stackchan"
+    STACKCHAN_DERIVED = File.join(ROOT, "build", "ios-stackchan-app")
+
+    desc "Generate the Stack-chan Xcode project from project.yml"
+    task :gen do
+      sh "cd #{STACKCHAN_DIR.shellescape} && xcodegen generate"
+    end
+
+    desc "Build the Stack-chan app for the iOS Simulator"
+    task :build do
+      # libmruby.a + the PicoBLEDarwin Swift package are arm64 only; restrict to
+      # arm64 so the linker does not reject them for the x86_64 simulator slice.
+      sh "xcodebuild -project #{STACKCHAN_PROJ.shellescape} " \
+         "-scheme Stackchan -destination 'generic/platform=iOS Simulator' " \
+         "-derivedDataPath #{STACKCHAN_DERIVED.shellescape} " \
+         "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS=x86_64 build"
+    end
+
+    desc "Boot a simulator, install, and launch the Stack-chan app"
+    task :run do
+      app = Dir.glob(File.join(STACKCHAN_DERIVED, "Build", "Products",
+                               "*-iphonesimulator", "Stackchan.app")).first
+      raise "app not built; run `rake ios:stackchan:build`" unless app
+      udid = `xcrun simctl list devices available`.lines
+             .grep(/iPhone/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
+      raise "no available iPhone simulator" unless udid
+      sh "xcrun simctl boot #{udid} 2>/dev/null; true"
+      sh "open -a Simulator"
+      sh "xcrun simctl install #{udid} #{app.shellescape}"
+      sh "xcrun simctl launch #{udid} #{STACKCHAN_BUNDLE}"
+    end
+
+    desc "Full Stack-chan Simulator pipeline: lib -> gen -> build -> run"
+    task all: [:lib, :gen, :build, :run]
   end
 
   desc "Generate the Xcode project from project.yml"
