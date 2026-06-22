@@ -34,7 +34,6 @@ MRuby::CrossBuild.new("watchos-device") do |conf|
   conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
   conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
   conf.cc.defines << "PICORB_PLATFORM_DARWIN"
-  conf.cc.defines << "MRB_32BIT"
   conf.cc.defines << "MRB_UTF8_STRING"
   conf.cc.defines << "MRB_CONSTRAINED_BASELINE_PROFILE=1"
   conf.cc.defines << "MRB_HEAP_PAGE_SIZE=128"
