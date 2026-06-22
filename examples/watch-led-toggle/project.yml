@@ -1,0 +1,55 @@
+name: WatchLEDToggle
+options:
+  bundleIdPrefix: com.bash0c7.picoruby
+  deploymentTarget:
+    watchOS: "11.0"
+targets:
+  WatchLEDToggle:
+    type: application
+    platform: watchOS
+    sources:
+      - path: Sources
+      - path: app.rb
+        buildPhase: resources
+      - path: ../../bridge
+        includes:
+          - "picoruby_bridge.c"
+          - "picoruby_bridge.h"
+          - "task_hal_ios.c"
+    settings:
+      base:
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/WatchLEDToggle-Bridging-Header.h
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "$(inherited)"
+          - "PICORB_ALLOC_ESTALLOC"
+          - "PICORB_ALLOC_ALIGN=8"
+          - "MRB_NO_BOXING"
+          - "MRB_INT64"
+          - "MRB_UTF8_STRING"
+          - "PICORB_PLATFORM_DARWIN"
+          - "MRB_TICK_UNIT=4"
+          - "MRB_TIMESLICE_TICK_COUNT=3"
+          - "MRB_USE_TASK_SCHEDULER=1"
+          - "MRB_USE_VM_SWITCH_DISPATCH=1"
+          - "MRB_CONSTRAINED_BASELINE_PROFILE=1"
+          - "MRB_HEAP_PAGE_SIZE=128"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/../../vendor/picoruby/include"
+          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/mruby-compiler2/include"
+          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/mruby-compiler2/lib/prism/include"
+          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include"
+          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/include"
+          - "$(SRCROOT)/../../build/watchos-sim/include"
+          - "$(SRCROOT)/../../build/watchos-device/include"
+          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
+          - "$(SRCROOT)/../../bridge"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/lib"
+        OTHER_LDFLAGS:
+          - "-lmruby"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_WKApplication: "YES"
+        TARGETED_DEVICE_FAMILY: "4"
+        PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.WatchLEDToggle
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: SM5792D355
