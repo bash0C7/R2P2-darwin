@@ -227,6 +227,84 @@ namespace :ios do
     end
   end
 
+  namespace :torch do
+    TORCH_DIR     = File.join(ROOT, "examples", "iphone-torch")
+    TORCH_PROJ    = File.join(TORCH_DIR, "Torch.xcodeproj")
+    TORCH_BUNDLE  = "com.bash0c7.picoruby.Torch"
+    TORCH_VENDOR  = File.join(TORCH_DIR, "Vendor")
+    TORCH_DERIVED = File.join(ROOT, "build", "ios-torch-app")
+    TORCH_DEVICE_DERIVED = File.join(ROOT, "build", "ios-torch-app-device")
+
+    desc "Cross-build libmruby.a (Simulator) WITH picoruby-iphone-torch and stage under examples/iphone-torch/Vendor"
+    task lib: :setup do
+      stage_libmruby("r2p2-picoruby-ios-torch-sim.rb", "ios-torch-sim", TORCH_VENDOR)
+    end
+
+    desc "Generate the Torch Xcode project from project.yml"
+    task :gen do
+      sh "cd #{TORCH_DIR.shellescape} && xcodegen generate"
+    end
+
+    desc "Build the Torch app for the iOS Simulator"
+    task :build do
+      sh "xcodebuild -project #{TORCH_PROJ.shellescape} " \
+         "-scheme Torch -destination 'generic/platform=iOS Simulator' " \
+         "-derivedDataPath #{TORCH_DERIVED.shellescape} " \
+         "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS=x86_64 build"
+    end
+
+    desc "Boot a simulator, install, and launch the Torch app"
+    task :run do
+      app = Dir.glob(File.join(TORCH_DERIVED, "Build", "Products",
+                               "*-iphonesimulator", "Torch.app")).first
+      raise "app not built; run `rake ios:torch:build`" unless app
+      udid = `xcrun simctl list devices available`.lines
+             .grep(/iPhone/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
+      raise "no available iPhone simulator" unless udid
+      sh "xcrun simctl boot #{udid} 2>/dev/null; true"
+      sh "open -a Simulator"
+      sh "xcrun simctl install #{udid} #{app.shellescape}"
+      sh "xcrun simctl launch #{udid} #{TORCH_BUNDLE}"
+    end
+
+    desc "Full Torch Simulator pipeline: lib -> gen -> build -> run"
+    task all: [:lib, :gen, :build, :run]
+
+    namespace :device do
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-iphone-torch and stage under examples/iphone-torch/Vendor"
+      task lib: :setup do
+        stage_libmruby("r2p2-picoruby-ios-torch-device.rb", "ios-torch-device", TORCH_VENDOR)
+      end
+
+      desc "Build the Torch app, signed, for the connected iOS device"
+      task :build do
+        dest = `xcodebuild -project #{TORCH_PROJ.shellescape} -scheme Torch -showdestinations 2>/dev/null`.lines
+               .grep(/platform:iOS,/).reject { |l| l =~ /Simulator|placeholder/ }
+               .first&.match(/id:(\S+)/)&.captures&.first
+        raise "no connected iOS device destination (xcodebuild -showdestinations)" unless dest
+        sh "xcodebuild -project #{TORCH_PROJ.shellescape} -scheme Torch " \
+           "-destination 'id=#{dest}' " \
+           "-derivedDataPath #{TORCH_DEVICE_DERIVED.shellescape} " \
+           "ARCHS=arm64 -allowProvisioningUpdates build"
+      end
+
+      desc "Install and launch the Torch app on the connected iOS device"
+      task :run do
+        app = Dir.glob(File.join(TORCH_DEVICE_DERIVED, "Build", "Products",
+                                 "*-iphoneos", "Torch.app")).first
+        raise "app not built; run `rake ios:torch:device:build`" unless app
+        dev = `xcrun devicectl list devices`.lines
+              .grep(/iPhone|iPad/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
+        raise "no connected iOS device (xcrun devicectl list devices)" unless dev
+        sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
+        sh "xcrun devicectl device process launch --console --device #{dev} #{TORCH_BUNDLE}"
+      end
+
+      desc "Full Torch device pipeline: lib -> gen -> build -> run (needs a connected, signed device)"
+      task all: [:lib, "ios:torch:gen", :build, :run]
+    end
+  end
+
   desc "Generate the Xcode project from project.yml"
   task :gen do
     sh "cd #{APP_DIR.shellescape} && xcodegen generate"
