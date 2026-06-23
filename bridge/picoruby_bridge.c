@@ -139,72 +139,38 @@ char *repl_eval(const char *src) {
   return buf;
 }
 
-typedef struct {
-  const char *boot_src;
-  mrb_bool ok;
-} vm_boot_args;
-
-static mrb_value
-vm_boot_body(mrb_state *mrb, void *ud)
-{
-  vm_boot_args *args = (vm_boot_args *)ud;
-  size_t shim_len = strlen(PUTS_SHIM), src_len = strlen(args->boot_src);
+void *vm_open(const char *boot_src) {
+  uint8_t *heap = (uint8_t *)calloc(1, HEAP_SIZE);
+  if (heap == NULL) return NULL;
+  mrb_state *mrb = mrb_open_with_custom_alloc(heap, HEAP_SIZE);
+  if (mrb == NULL) { free(heap); return NULL; }
+  global_mrb = mrb;
+  size_t shim_len = strlen(PUTS_SHIM), src_len = strlen(boot_src);
   char *combined = (char *)malloc(shim_len + src_len + 1);
-  if (combined == NULL) {
-    fprintf(stderr, "[vm_open] malloc combined failed\n");
-    mrb_raise(mrb, E_RUNTIME_ERROR, "malloc failed");
-  }
+  if (combined == NULL) { mrb_close(mrb); global_mrb = NULL; free(heap); return NULL; }
   memcpy(combined, PUTS_SHIM, shim_len);
-  memcpy(combined + shim_len, args->boot_src, src_len + 1);
-
-  fprintf(stderr, "[vm_open] compiling (%zu bytes)\n", shim_len + src_len);
+  memcpy(combined + shim_len, boot_src, src_len + 1);
   mrc_ccontext *cc = mrc_ccontext_new(mrb);
   mrc_ccontext_filename(cc, "main");
   const uint8_t *u = (const uint8_t *)combined;
   mrc_irep *irep = mrc_load_string_cxt(cc, &u, strlen(combined));
   if (irep == NULL) {
-    fprintf(stderr, "[vm_open] compile failed\n");
+    /* The boot Ruby is bundled and fixed, so a compile failure is a build-time
+     * bug. Treat it as fatal rather than handing back a VM whose $app is nil. */
     print_diagnostics(cc);
     mrc_ccontext_free(cc);
     free(combined);
-    mrb_raise(mrb, E_RUNTIME_ERROR, "compile failed");
-  }
-  fprintf(stderr, "[vm_open] running boot irep\n");
-  run_irep(mrb, cc, irep);
-  fprintf(stderr, "[vm_open] boot done\n");
-  mrc_ccontext_free(cc);
-  free(combined);
-  args->ok = TRUE;
-  return mrb_nil_value();
-}
-
-void *vm_open(const char *boot_src) {
-  fprintf(stderr, "[vm_open] start HEAP_SIZE=%d\n", HEAP_SIZE);
-  uint8_t *heap = (uint8_t *)calloc(1, HEAP_SIZE);
-  if (heap == NULL) { fprintf(stderr, "[vm_open] calloc failed\n"); return NULL; }
-  mrb_state *mrb = mrb_open_with_custom_alloc(heap, HEAP_SIZE);
-  fprintf(stderr, "[vm_open] mrb=%p\n", (void*)mrb);
-  if (mrb == NULL) { free(heap); return NULL; }
-  global_mrb = mrb;
-
-  /* Use mrb_protect_error so any Ruby exception (OOM, compile error, runtime)
-   * is caught here rather than reaching exc_throw with a NULL jmp → abort(). */
-  vm_boot_args args = { boot_src, FALSE };
-  mrb_bool error = FALSE;
-  mrb_value exc = mrb_protect_error(mrb, vm_boot_body, &args, &error);
-  if (error || !args.ok) {
-    fprintf(stderr, "[vm_open] boot failed (error=%d ok=%d)\n", (int)error, (int)args.ok);
-    /* Do NOT call mrb_close: boot may have corrupted the estalloc heap, and
-     * mrb_close would walk every GC object triggering a heap-corruption assert.
-     * The entire heap is a single calloc block — freeing it is safe and complete. */
-    global_mrb = NULL; free(heap);
+    mrb_close(mrb);
+    global_mrb = NULL;
+    free(heap);
     return NULL;
   }
-
+  run_irep(mrb, cc, irep);
+  mrc_ccontext_free(cc);
+  free(combined);
   vm_handle *h = (vm_handle *)malloc(sizeof(vm_handle));
   if (h == NULL) { mrb_close(mrb); global_mrb = NULL; free(heap); return NULL; }
   h->mrb = mrb; h->heap = heap;
-  fprintf(stderr, "[vm_open] success h=%p\n", (void*)h);
   return h;
 }
 
