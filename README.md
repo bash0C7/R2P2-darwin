@@ -50,7 +50,8 @@ EXAMPLE         default: repl   (which examples/<name> the base ios:* tasks buil
 
 Each example has its own README explaining where and how PicoRuby is used:
 [`examples/repl`](examples/repl/README.md),
-[`examples/virtual-peripheral`](examples/virtual-peripheral/README.md), and
+[`examples/virtual-peripheral`](examples/virtual-peripheral/README.md),
+[`examples/iphone-torch`](examples/iphone-torch/README.md), and
 [`examples/watch-led-toggle`](examples/watch-led-toggle/README.md).
 
 ### `repl` — evaluate Ruby on the device
@@ -88,6 +89,20 @@ rake ios:vperiph:write        # macOS BLE central helper that drives the periphe
 central that scans for `PBLE-TEST`, connects, reads, subscribes, and writes.
 `WRITE_HEX`, `TARGET_NAME`, and `APP_SERVICES` pass through the environment
 (e.g. `WRITE_HEX=02 rake ios:vperiph:write`).
+
+### `iphone-torch` — Ruby-driven flashlight (the iPhone "L チカ")
+
+The flashlight as the LED-blink of iOS: two buttons turn the iPhone torch on and
+off. The whole behaviour is Ruby — `app.rb` calls a `Torch` class, and the
+`picoruby-iphone-torch` gem's Darwin port turns those calls into
+`AVCaptureDevice` torch operations. The SwiftUI layer only boots the VM and
+forwards button taps; there is no torch logic in Swift. See the
+[example README](examples/iphone-torch/README.md) for the gem structure.
+
+```
+rake ios:torch:all            # Simulator: lib -> gen -> build -> run
+rake ios:torch:device:all     # connected device: build, sign, install, launch
+```
 
 ### `watch-led-toggle` — an LED blink, in Ruby, on the Apple Watch
 
@@ -179,6 +194,7 @@ R2P2-iOS/
     repl/                           evaluate Ruby on the device
     virtual-peripheral/             a BLE peripheral whose behavior lives in app.rb
       tools/ble_write.swift         macOS BLE central helper
+    iphone-torch/                   Ruby-driven iPhone flashlight (picoruby-iphone-torch gem)
     watch-led-toggle/               a 🔴/🔵 LED blink in Ruby, watchOS (arm64_32)
   vendor/picoruby/                  fetched by rake setup (gitignored)
   build/                            build output, MRUBY_BUILD_DIR (gitignored)
