@@ -56,7 +56,7 @@ MRuby::CrossBuild.new("ios-stackchan-device") do |conf|
   conf.ports :darwin
 
   ble_gemdir = ENV["PICORUBY_BLE_GEMDIR"] ||
-    File.expand_path("../../picoruby-ble-darwin-port/mrbgems/picoruby-ble", __dir__)
+    File.expand_path("../vendor/picoruby/mrbgems/picoruby-ble", __dir__)
 
   conf.cc.include_paths << "#{ble_gemdir}/ports/darwin/ext"
 
