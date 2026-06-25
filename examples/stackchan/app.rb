@@ -123,17 +123,11 @@ end
 # the two compare directly.
 NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
-# picoruby-ble's BLE::Utils.uuid renders these to the 16-byte little-endian wire
-# form with Array#pack — a method picoruby's Array class does not implement in
-# this build (the mruby-pack gem is not linked). The discovered service /
-# characteristic :uuid128 fields are exactly those 16 raw little-endian bytes,
-# so rather than build bytes we render them back to a big-endian hex string
-# (with String#getbyte, which picoruby's String class does implement) and match
-# against these dash-stripped expectations.
+# The discovered service/characteristic :uuid128 fields are 16 raw little-endian
+# bytes. bind_rx renders them to big-endian hex and matches against these
+# dash-stripped constants (avoids calling BLE::Utils.uuid unnecessarily).
 NUS_SERVICE_UUID128_HEX = "6e400001b5a3f393e0a9e50e24dcca9e"
 NUS_RX_CHAR_UUID128_HEX = "6e400002b5a3f393e0a9e50e24dcca9e"
-# Lowercase hex digits for the byte -> hex rendering (picoruby's Integer has no
-# #chr in this build either, so index this constant instead).
 HEX_DIGITS = "0123456789abcdef"
 # Substring matched against the advertised local name to pick the robot.
 STACKCHAN_NAME = "StackChan"
@@ -228,7 +222,7 @@ if BLE_AVAILABLE
       return true if connected?
       print "Scanning for Stack-chan (NUS)\n"
       # On the Simulator no peripheral answers; scan simply times out.
-      @ble.scan(timeout_ms: 5000)
+      @ble.scan(timeout_ms: 30000)
       bind_rx
       if connected?
         print "Connected; RX value_handle bound\n"
@@ -252,9 +246,6 @@ if BLE_AVAILABLE
         print frame
         return :pending
       end
-      # `frame` is already an ASCII String; the BLE write takes a String and
-      # sends its raw bytes (mrb_get_args "iiS" -> RSTRING_PTR/LEN). The reduced
-      # VM has no Array#pack, so do not round-trip through bytes.
       @ble.write_value_of_characteristic_without_response(
         @ble.conn_handle, @rx_value_handle, frame
       )
@@ -265,8 +256,7 @@ if BLE_AVAILABLE
     private
 
     # Walk discovered services for the NUS, then its RX characteristic. Match by
-    # rendering each discovered :uuid128 (16 little-endian bytes) to big-endian
-    # hex; see NUS_SERVICE_UUID128_HEX for why we avoid BLE::Utils.uuid here.
+    # rendering each discovered :uuid128 (16 little-endian bytes) to big-endian hex.
     def bind_rx
       @ble.services.each do |service|
         next unless uuid128_hex(service[:uuid128]) == NUS_SERVICE_UUID128_HEX
@@ -279,18 +269,16 @@ if BLE_AVAILABLE
       end
     end
 
-    # 16 little-endian bytes -> big-endian lowercase hex String ("" unless the
-    # input is exactly 16 bytes). Uses only String#getbyte and String#[i, len]:
-    # picoruby's Array has no #pack and its Integer no #chr in this build.
+    # 16 bytes (big-endian as stored in :uuid128) -> lowercase hex String.
     def uuid128_hex(bytes)
       return "" unless bytes && bytes.bytesize == 16
       hex = ""
-      i = 15
-      while i >= 0
+      i = 0
+      while i < 16
         b = bytes.getbyte(i) || 0
         hex += HEX_DIGITS[(b >> 4), 1]
         hex += HEX_DIGITS[b & 0x0f, 1]
-        i -= 1
+        i += 1
       end
       hex
     end
@@ -348,9 +336,10 @@ class Stackchan
     mag = parts[1] ? parts[1].to_i : 0
     t   = parts[2] ? parts[2].to_i : nil
     case dir
-    when "left"  then @ble.write(FrameCodec.encode_head(yaw_left: mag, time_ms: t))
-    when "right" then @ble.write(FrameCodec.encode_head(yaw_right: mag, time_ms: t))
-    when "up"    then @ble.write(FrameCodec.encode_head(pitch_up: mag, time_ms: t))
+    when "left"   then @ble.write(FrameCodec.encode_head(yaw_left: mag, time_ms: t))
+    when "right"  then @ble.write(FrameCodec.encode_head(yaw_right: mag, time_ms: t))
+    when "up"     then @ble.write(FrameCodec.encode_head(pitch_up: mag, time_ms: t))
+    when "center" then @ble.write(FrameCodec.encode_head(yaw_left: 0, pitch_up: 0, time_ms: t || 400))
     else raise ArgumentError, "unknown head dir: #{dir}"
     end
   end

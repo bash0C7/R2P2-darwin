@@ -44,6 +44,10 @@ final class VMExecutor {
             }
             let result = out.map { String(cString: $0) } ?? ""
             if let out = out { free(out) }
+            // Mirror every call's captured VM output to NSLog so the device
+            // console/syslog carries it (the SwiftUI Output pane is not the only
+            // sink); lets the bring-up driver read Connect/frame output remotely.
+            NSLog("[Stackchan] %@(%@) ->\n%@", method, arg, result)
             DispatchQueue.main.async { onResult(result) }
         }
     }

@@ -58,7 +58,7 @@ targets:
         OTHER_LDFLAGS:
           - "-lmruby"
         GENERATE_INFOPLIST_FILE: "YES"
-        INFOPLIST_KEY_NSBluetoothCentralManagerUsageDescription: "Connect to your Stack-chan robot over Bluetooth."
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Connect to your Stack-chan robot over Bluetooth."
         INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription: "Connect to your Stack-chan robot over Bluetooth."
         TARGETED_DEVICE_FAMILY: "1,2"
         PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.Stackchan
