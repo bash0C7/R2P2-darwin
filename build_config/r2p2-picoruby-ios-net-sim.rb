@@ -50,17 +50,7 @@ MRuby::CrossBuild.new("ios-net-sim") do |conf|
   # :darwin makes its mbedtls/rng deps use their SecRandomCopyBytes ports;
   # -framework Security resolves SecRandomCopyBytes at app link.
   conf.ports :darwin
-
-  # picoruby-pack is the mrubyc-VM pack/unpack reimplementation; its src/pack.c
-  # #includes a non-existent "mruby/pack.c" and cannot compile under PICORB_VM_MRUBY
-  # (verified: it fails standalone, not just via net). This build uses the mruby VM,
-  # whose standard mruby-pack provides Array#pack/String#unpack. Nothing in net's C
-  # or its dependency chain calls picoruby-pack's C API, so satisfy the dependency
-  # with mruby-pack and strip the picoruby-pack declaration from net's spec.
-  conf.gem "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-pack"
-  conf.gem "#{MRUBY_ROOT}/mrbgems/picoruby-net" do |spec|
-    spec.dependencies.reject! { |d| d[:gem] == "picoruby-pack" }
-  end
+  conf.gem "#{MRUBY_ROOT}/mrbgems/picoruby-net"
 
   conf.linker.flags << "-framework" << "Security"
 end
