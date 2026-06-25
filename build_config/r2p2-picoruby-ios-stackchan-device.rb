@@ -52,6 +52,13 @@ MRuby::CrossBuild.new("ios-stackchan-device") do |conf|
 
   conf.gem core: "mruby-compiler2"
 
+  # picoruby-ble's mrblib uses Array#pack / String#<< / sprintf. These live in
+  # PicoRuby's stdlib.gembox (vm_mruby branch) which the minimal base config omits.
+  mruby_mrbgems = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-string-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-pack"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-sprintf"
+
   # --- Stack-chan: picoruby-ble + CoreBluetooth Darwin port -----------------
   conf.ports :darwin
 
