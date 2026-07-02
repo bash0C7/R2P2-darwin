@@ -1,19 +1,19 @@
-# iOS Simulator (arm64) cross-build for picoruby → libmruby.a for the
-# iphonesimulator SDK. prism compiler + VM are baked in, so Ruby is compiled &
-# run at runtime in-app. Mirrors the cross-build shape of picoruby's
-# r2p2-picoruby-pico2.rb (target cc + host_command) and R2P2-macOS darwin defines.
+# iOS Simulator (arm64) cross-build for the IO.console example: the bare picoruby
+# VM/compiler (identical to r2p2-picoruby-ios-sim.rb) PLUS picoruby-io-console
+# built with its Apple/Darwin port. EXAMPLE-SCOPED — the base sim config stays
+# io-console-free so the REPL keeps linking standalone.
 #
-# PICORB_PLATFORM_POSIX is intentionally omitted: iOS Simulator has __APPLE__
-# defined but not gethostuuid() or other macOS-only POSIX APIs used by the
-# picoruby-machine posix port. Without POSIX, the gemboxes that depend on it
-# (core, stdlib) are also dropped so only the bare VM + compiler are built in.
+# The posix port drives stdin via termios. iOS has no controlling TTY, so the
+# Darwin port (ports/darwin/io-console.c) splits on TargetConditionals: no-TTY
+# stubs for iOS, termios reuse for macOS. conf.ports :darwin selects it. No extra
+# frameworks or gem dependencies.
 
 sdk_path = `xcrun --sdk iphonesimulator --show-sdk-path`.strip
 clang    = `xcrun --sdk iphonesimulator --find clang`.strip
 ar       = `xcrun --sdk iphonesimulator --find ar`.strip
 ios_min  = ENV["IOS_MIN"] || "17.0"
 
-MRuby::CrossBuild.new("ios-sim") do |conf|
+MRuby::CrossBuild.new("ios-io-console-sim") do |conf|
   conf.toolchain :clang
 
   # The gcc/clang toolchain sets -lm by default, but libm is part of
@@ -42,7 +42,10 @@ MRuby::CrossBuild.new("ios-sim") do |conf|
   conf.picoruby
 
   conf.gem core: "mruby-compiler2"
-  # mruby-bin-mrbc2 produces a host-executable picorbc; it must not appear in
-  # a cross-build because the ios-sim linker cannot produce a host-runnable
-  # binary. The host mrbc tool is built by picoruby's build_mrbc_exec hook.
+
+  # --- IO.console: picoruby-io-console + its Darwin (no-TTY / termios) port -------
+  # conf.ports :darwin makes effective_ports include "darwin", so the gem compiles
+  # ports/darwin/io-console.c (iOS stubs under TARGET_OS_IPHONE).
+  conf.ports :darwin
+  conf.gem "#{MRUBY_ROOT}/mrbgems/picoruby-io-console"
 end

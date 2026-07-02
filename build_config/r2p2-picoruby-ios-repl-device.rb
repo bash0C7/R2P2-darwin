@@ -1,19 +1,18 @@
-# iOS device (arm64) cross-build for picoruby → libmruby.a for the iphoneos
-# SDK (physical device). prism compiler + VM are baked in, so Ruby is compiled &
-# run at runtime in-app. Mirrors the cross-build shape of picoruby's
+# iOS device (arm64, iphoneos SDK) full-REPL cross-build for picoruby →
+# libmruby.a (physical device). prism compiler + VM are baked in, so Ruby is
+# compiled & run at runtime in-app. Mirrors the cross-build shape of picoruby's
 # r2p2-picoruby-pico2.rb (target cc + host_command) and R2P2-macOS darwin defines.
 #
-# PICORB_PLATFORM_POSIX is intentionally omitted: iOS has __APPLE__
-# defined but not gethostuuid() or other macOS-only POSIX APIs used by the
-# picoruby-machine posix port. Without POSIX, the gemboxes that depend on it
-# (core, stdlib) are also dropped so only the bare VM + compiler are built in.
+# Device counterpart of r2p2-picoruby-ios-repl-sim.rb; see that file for the
+# iOS-IS-POSIX rationale, the darwin port-chain (conf.ports :darwin, :posix),
+# and the gembox exclusions (minimum host binaries, networking/OpenSSL).
 
 sdk_path = `xcrun --sdk iphoneos --show-sdk-path`.strip
 clang    = `xcrun --sdk iphoneos --find clang`.strip
 ar       = `xcrun --sdk iphoneos --find ar`.strip
 ios_min  = ENV["IOS_MIN"] || "17.0"
 
-MRuby::CrossBuild.new("ios-device") do |conf|
+MRuby::CrossBuild.new("ios-repl-device") do |conf|
   conf.toolchain :clang
 
   # The gcc/clang toolchain sets -lm by default, but libm is part of
@@ -34,15 +33,27 @@ MRuby::CrossBuild.new("ios-device") do |conf|
   conf.cc.defines << "MRB_TIMESLICE_TICK_COUNT=3"
   conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
   conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
-  conf.cc.defines << "PICORB_PLATFORM_DARWIN"
+  conf.cc.defines << "PICORB_PLATFORM_POSIX"   # iOS IS POSIX
+  conf.cc.defines << "PICORB_PLATFORM_DARWIN"  # ...and darwin (additive)
   conf.cc.defines << "MRB_INT64"
   conf.cc.defines << "MRB_NO_BOXING"
   conf.cc.defines << "MRB_UTF8_STRING"
 
+  # iOS port selection: darwin first, posix fallback.
+  conf.ports :darwin, :posix
+
   conf.picoruby
 
+  # minimum.gembox replacement without its host-only binaries (mruby-bin-mrbc2 /
+  # picoruby-bin-picoruby): a cross-build can't produce host-runnable binaries.
+  # The host mrbc tool is built by picoruby's build_mrbc_exec hook.
   conf.gem core: "mruby-compiler2"
-  # mruby-bin-mrbc2 produces a host-executable picorbc; it must not appear in
-  # a cross-build because the ios-device linker cannot produce a host-runnable
-  # binary. The host mrbc tool is built by picoruby's build_mrbc_exec hook.
+
+  conf.gembox "mruby-posix"
+  conf.gembox "core"
+  conf.gembox "stdlib"
+  conf.gembox "shell"
+
+  # rng/mbedtls darwin ports use SecRandomCopyBytes.
+  conf.linker.flags << "-framework" << "Security"
 end

@@ -97,14 +97,15 @@ end
 namespace :ios do
   desc "Cross-build libmruby.a for the iOS Simulator and stage under app/Vendor"
   task lib: :setup do
-    # Base (BLE-free) config — keeps the REPL example self-contained.
-    stage_libmruby("r2p2-picoruby-ios-sim.rb", "ios-sim", VENDOR_DIR)
+    # Full REPL (posix?=true + darwin port-chain): the complete core/stdlib/shell
+    # gembox set. BLE-free, so the REPL example stays self-contained.
+    stage_libmruby("r2p2-picoruby-ios-repl-sim.rb", "ios-repl-sim", VENDOR_DIR)
   end
 
   namespace :device do
     desc "Cross-build libmruby.a for an iOS device (iphoneos arm64) and stage under app/Vendor"
     task lib: :setup do
-      stage_libmruby("r2p2-picoruby-ios-device.rb", "ios-device", VENDOR_DIR)
+      stage_libmruby("r2p2-picoruby-ios-repl-device.rb", "ios-repl-device", VENDOR_DIR)
     end
 
     desc "Build the app, signed, for the connected iOS device"
@@ -389,12 +390,91 @@ namespace :ios do
     end
   end
 
+  namespace :net do
+    NET_DIR     = File.join(ROOT, "examples", "networking")
+    NET_PROJ    = File.join(NET_DIR, "Networking.xcodeproj")
+    NET_BUNDLE  = "com.bash0c7.picoruby.Networking"
+    NET_VENDOR  = File.join(NET_DIR, "Vendor")
+    NET_DERIVED = File.join(ROOT, "build", "ios-net-app")
+    NET_DEVICE_DERIVED = File.join(ROOT, "build", "ios-net-app-device")
+
+    desc "Cross-build libmruby.a (Simulator) WITH picoruby-net (mbedTLS) and stage under examples/networking/Vendor"
+    task lib: :setup do
+      stage_libmruby("r2p2-picoruby-ios-net-sim.rb", "ios-net-sim", NET_VENDOR)
+    end
+
+    desc "Generate the Networking Xcode project from project.yml"
+    task :gen do
+      sh "cd #{NET_DIR.shellescape} && xcodegen generate"
+    end
+
+    desc "Build the Networking app for the iOS Simulator"
+    task :build do
+      sh "xcodebuild -project #{NET_PROJ.shellescape} " \
+         "-scheme Networking -destination 'generic/platform=iOS Simulator' " \
+         "-derivedDataPath #{NET_DERIVED.shellescape} " \
+         "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS=x86_64 build"
+    end
+
+    desc "Boot a simulator, install, and launch the Networking app"
+    task :run do
+      app = Dir.glob(File.join(NET_DERIVED, "Build", "Products",
+                               "*-iphonesimulator", "Networking.app")).first
+      raise "app not built; run `rake ios:net:build`" unless app
+      udid = `xcrun simctl list devices available`.lines
+             .grep(/iPhone/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
+      raise "no available iPhone simulator" unless udid
+      sh "xcrun simctl boot #{udid} 2>/dev/null; true"
+      sh "open -a Simulator"
+      sh "xcrun simctl install #{udid} #{app.shellescape}"
+      sh "xcrun simctl launch #{udid} #{NET_BUNDLE}"
+    end
+
+    desc "Full Networking Simulator pipeline: lib -> gen -> build -> run"
+    task all: [:lib, :gen, :build, :run]
+
+    namespace :device do
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-net and stage under examples/networking/Vendor"
+      task lib: :setup do
+        stage_libmruby("r2p2-picoruby-ios-net-device.rb", "ios-net-device", NET_VENDOR)
+      end
+
+      desc "Build the Networking app, signed, for the connected iOS device"
+      task :build do
+        dest = `xcodebuild -project #{NET_PROJ.shellescape} -scheme Networking -showdestinations 2>/dev/null`.lines
+               .grep(/platform:iOS,/).reject { |l| l =~ /Simulator|placeholder/ }
+               .first&.match(/id:(\S+)/)&.captures&.first
+        raise "no connected iOS device destination (xcodebuild -showdestinations)" unless dest
+        sh "xcodebuild -project #{NET_PROJ.shellescape} -scheme Networking " \
+           "-destination 'id=#{dest}' " \
+           "-derivedDataPath #{NET_DEVICE_DERIVED.shellescape} " \
+           "ARCHS=arm64 -allowProvisioningUpdates build"
+      end
+
+      desc "Install and launch the Networking app on the connected iOS device"
+      task :run do
+        app = Dir.glob(File.join(NET_DEVICE_DERIVED, "Build", "Products",
+                                 "*-iphoneos", "Networking.app")).first
+        raise "app not built; run `rake ios:net:device:build`" unless app
+        dev = `xcrun devicectl list devices`.lines
+              .grep(/iPhone|iPad/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
+        raise "no connected iOS device (xcrun devicectl list devices)" unless dev
+        sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
+        sh "xcrun devicectl device process launch --console --device #{dev} #{NET_BUNDLE}"
+      end
+
+      desc "Full Networking device pipeline: lib -> gen -> build -> run (needs a connected, signed device)"
+      task all: [:lib, "ios:net:gen", :build, :run]
+    end
+  end
+
   namespace :watch do
     WATCH_DIR     = File.join(ROOT, "examples", "watch-led-toggle")
     WATCH_PROJ    = File.join(WATCH_DIR, "WatchLEDToggle.xcodeproj")
     WATCH_BUNDLE  = "com.bash0c7.picoruby.WatchLEDToggle"
     WATCH_VENDOR  = File.join(WATCH_DIR, "Vendor")
     WATCH_DERIVED = File.join(ROOT, "build", "watchos-app")
+    WATCH_DEVICE_DERIVED = File.join(ROOT, "build", "watchos-app-device")
 
     desc "Cross-build libmruby.a for watchOS Simulator and stage under examples/watch-led-toggle/Vendor"
     task lib: :setup do
@@ -402,10 +482,44 @@ namespace :ios do
     end
 
     namespace :device do
-      desc "Cross-build libmruby.a for watchOS device and stage under examples/watch-led-toggle/Vendor"
+      desc "Cross-build libmruby.a for watchOS device (arm64_32) and stage under examples/watch-led-toggle/Vendor"
       task lib: :setup do
         stage_libmruby("r2p2-picoruby-watchos-device.rb", "watchos-device", WATCH_VENDOR)
+        # stage_libmruby copies the fat/arm64 archive mruby just built; the
+        # physical watch needs arm64_32. Recompile in place and re-stage so
+        # Vendor/lib never ends up with an arch the device can't run.
+        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape}"
+        lib = File.join(BUILD_DIR, "watchos-device", "lib", "libmruby.a")
+        cp lib, File.join(WATCH_VENDOR, "lib", "libmruby.a")
+        puts "Re-staged arm64_32 libmruby.a under #{WATCH_VENDOR}"
       end
+
+      desc "Build the Watch LED Toggle app, signed, for the connected Apple Watch"
+      task :build do
+        dest = `xcodebuild -project #{WATCH_PROJ.shellescape} -scheme WatchLEDToggle -showdestinations 2>/dev/null`.lines
+               .grep(/platform:watchOS,/).reject { |l| l =~ /Simulator|placeholder/ }
+               .first&.match(/id:(\S+)/)&.captures&.first
+        raise "no connected watchOS device destination (xcodebuild -showdestinations)" unless dest
+        sh "xcodebuild -project #{WATCH_PROJ.shellescape} -scheme WatchLEDToggle " \
+           "-destination 'id=#{dest}' " \
+           "-derivedDataPath #{WATCH_DEVICE_DERIVED.shellescape} " \
+           "ARCHS=arm64_32 -allowProvisioningUpdates build"
+      end
+
+      desc "Install and launch the Watch LED Toggle app on the connected Apple Watch"
+      task :run do
+        app = Dir.glob(File.join(WATCH_DEVICE_DERIVED, "Build", "Products",
+                                 "*-watchos", "WatchLEDToggle.app")).first
+        raise "app not built; run `rake ios:watch:device:build`" unless app
+        dev = `xcrun devicectl list devices`.lines
+              .grep(/Watch/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
+        raise "no connected Apple Watch (xcrun devicectl list devices)" unless dev
+        sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
+        sh "xcrun devicectl device process launch --console --device #{dev} #{WATCH_BUNDLE}"
+      end
+
+      desc "Full Watch device pipeline: lib -> gen -> build -> run (needs a connected, signed Apple Watch)"
+      task all: [:lib, "ios:watch:gen", :build, :run]
     end
 
     desc "Generate the Watch LED Toggle Xcode project from project.yml"
