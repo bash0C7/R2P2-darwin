@@ -27,6 +27,10 @@ final class VMExecutor {
             }
             self.vm = handle
             NSLog("[Networking] VM opened")
+            // On-device CLI verification: auto-run one fetch at boot so the TLS
+            // round-trip result reaches the device console (readable via
+            // `devicectl ... process launch --console`) without a manual tap.
+            self.call("fetch")
         }
     }
 
@@ -38,6 +42,7 @@ final class VMExecutor {
             let text = out.map { String(cString: $0) } ?? ""
             if let out = out { free(out) }
             if !text.isEmpty {
+                NSLog("[Networking] %@", text)
                 DispatchQueue.main.async { self.onLog?(text) }
             }
         }
