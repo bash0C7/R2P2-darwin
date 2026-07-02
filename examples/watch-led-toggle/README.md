@@ -72,17 +72,18 @@ but **32-bit pointers**. The Simulator on an Apple-silicon Mac is ordinary 64-bi
 ### 2. Producing an `arm64_32` `libmruby.a`
 
 picoruby's mruby build (`MRuby::CrossBuild`) compiles host-arch / `arm64`
-objects; it does not target `arm64_32` directly. The device library is produced
-in two steps:
-
-```
-rake ios:watch:device:lib              # build_config/r2p2-picoruby-watchos-device.rb
-ruby build_config/recompile_arm64_32.rb # recompile each .c → arm64_32, re-archive
-```
+objects; it does not target `arm64_32` directly. `rake ios:watch:device:lib`
+handles both steps as one task: it cross-builds with
+`build_config/r2p2-picoruby-watchos-device.rb`, then runs
+`build_config/recompile_arm64_32.rb` and re-stages the result under
+`Vendor/lib`, so the archive that ships to Xcode is always `arm64_32`-only.
 
 `recompile_arm64_32.rb` walks the build dir, finds each object's source via its
 `.d` depfile, recompiles it with `-arch arm64_32`, and re-archives an
-`arm64_32`-only `libmruby.a`.
+`arm64_32`-only `libmruby.a`. On a build_config whose `cc.flags` already target
+`-arch arm64_32` (the current one), this step is a safety net rather than a
+structural necessity — it recompiles 0 objects and just re-verifies the archive
+is `arm64_32`-only.
 
 ### 3. One source of truth for the ABI defines
 
@@ -132,27 +133,19 @@ rake ios:watch:all     # lib -> gen -> build -> boot a watch sim -> install -> l
 
 ### Physical Apple Watch (`arm64_32`)
 
-The device path is the explicit pipeline (substitute your watch's UDID, from
-`xcrun devicectl list devices`):
-
 ```sh
-WATCH=<your-watch-UDID>
-rm -rf build/watchos-device
-rake ios:watch:device:lib                       # arm64 mruby objects
-ruby build_config/recompile_arm64_32.rb         # → arm64_32 libmruby.a
-cp build/watchos-device/lib/libmruby.a examples/watch-led-toggle/Vendor/lib/libmruby.a
-rake ios:watch:gen                              # regenerate the Xcode project
-xcodebuild -project examples/watch-led-toggle/WatchLEDToggle.xcodeproj \
-  -scheme WatchLEDToggle -destination "id=$WATCH" \
-  -derivedDataPath build/watchos-app-device -allowProvisioningUpdates build
-xcrun devicectl device install app --device "$WATCH" \
-  build/watchos-app-device/Build/Products/Debug-watchos/WatchLEDToggle.app
-# launch with console (boot fires on the app's onAppear, so raise/tap the watch):
-xcrun devicectl device process launch --console --device "$WATCH" \
-  com.bash0c7.picoruby.WatchLEDToggle
+rake ios:watch:device:all   # lib (+ arm64_32 recompile) -> gen -> build -> install -> launch
 ```
+
+Or step by step: `rake ios:watch:device:lib && rake ios:watch:gen &&
+rake ios:watch:device:build && rake ios:watch:device:run`. `:run` finds the
+paired watch via `xcrun devicectl list devices` automatically.
 
 On launch the console shows `booted` then `VM opened` (the boot Ruby ran and the
 VM is live); tapping the screen flips 🔴 ⇄ 🔵. Set `DEVELOPMENT_TEAM` in
-`project.yml` to your own team; the first launch of the bundle id needs a one-time
-on-device trust.
+`project.yml` to your own team; the first launch of the bundle id needs a
+one-time on-device trust, and if the watch is locked, `:run` fails with a
+`FBSOpenApplicationErrorDomain error 7 Locked` — unlock it and re-run.
+
+Confirmed working on a physical Apple Watch Series 8 (watchOS 26): `VM opened`
+in console, and the toggle button visibly flips the LED colour.
