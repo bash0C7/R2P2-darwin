@@ -39,5 +39,5 @@ MRuby::CrossBuild.new("watchos-sim") do |conf|
   conf.cc.defines << "MRB_UTF8_STRING"
 
   conf.picoruby
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 end

@@ -32,8 +32,8 @@ MRuby::CrossBuild.new("ios-torch-device") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   conf.ports :darwin
-  conf.gem File.expand_path("../examples/iphone-torch/picoruby-iphone-torch", __dir__)
+  conf.gem File.expand_path("../examples/ios/iphone-torch/picoruby-iphone-torch", __dir__)
 end

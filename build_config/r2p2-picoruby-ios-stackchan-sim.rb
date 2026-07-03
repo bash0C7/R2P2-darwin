@@ -62,7 +62,7 @@ MRuby::CrossBuild.new("ios-stackchan-sim") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   # picoruby-ble's mrblib uses Array#pack / String#<< / sprintf. These live in
   # PicoRuby's stdlib.gembox (vm_mruby branch) which the minimal base config omits.

@@ -41,7 +41,7 @@ MRuby::CrossBuild.new("ios-rng-sim") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   # --- RNG: picoruby-rng + its Darwin (SecRandomCopyBytes) port -------------------
   # conf.ports :darwin makes effective_ports include "darwin", so the gem compiles

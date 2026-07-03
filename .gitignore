@@ -3,10 +3,14 @@
 # build output
 /build/
 # staged lib + headers + generated project (per example)
-/examples/*/Vendor/
-/examples/*/*.xcodeproj
+/examples/*/*/Vendor/
+/examples/*/*/*.xcodeproj
 # process docs (kept local; may hold in-progress / sensitive notes)
 /docs/superpowers/
 /HANDOFF.md
 # isolated worktrees (harness-managed)
 /.claude/worktrees/
+# macos:single staging
+/tmp/
+# Claude Code local-only settings (permission grants etc.)
+/.claude/settings.local.json

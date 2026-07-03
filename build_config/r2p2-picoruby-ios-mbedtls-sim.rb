@@ -41,7 +41,7 @@ MRuby::CrossBuild.new("ios-mbedtls-sim") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   # --- MbedTLS: picoruby-mbedtls + its Darwin port (+ rng/base64 deps) -----------
   # conf.ports :darwin selects ports/darwin for every gem that ships one:

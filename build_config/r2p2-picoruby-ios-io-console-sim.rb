@@ -41,7 +41,7 @@ MRuby::CrossBuild.new("ios-io-console-sim") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   # --- IO.console: picoruby-io-console + its Darwin (no-TTY / termios) port -------
   # conf.ports :darwin makes effective_ports include "darwin", so the gem compiles

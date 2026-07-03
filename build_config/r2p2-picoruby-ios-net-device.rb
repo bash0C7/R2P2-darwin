@@ -45,7 +45,7 @@ MRuby::CrossBuild.new("ios-net-device") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
   conf.gembox "mruby-posix"
   conf.gembox "core"
   conf.gembox "stdlib"

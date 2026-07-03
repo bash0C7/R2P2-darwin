@@ -44,7 +44,7 @@ This is the literal "L チカ": the *loop* is Ruby, the *light* is the hardware.
 Change the flashing and see for yourself — **no C or Swift rebuild needed**:
 
 ```sh
-# edit examples/iphone-torch/app.rb, e.g. set BLINK_COUNT = 7
+# edit examples/ios/iphone-torch/app.rb, e.g. set BLINK_COUNT = 7
 rake ios:torch:device:build   # only re-copies the app.rb resource into the .app
 #                               (libmruby.a and PicoTorchDarwin are untouched)
 # reinstall + launch (see rake ios:torch:device:run)

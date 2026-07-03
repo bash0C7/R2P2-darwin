@@ -10,8 +10,8 @@
 # their posix siblings via `conf.ports :darwin, :posix`.
 #
 # Excluded vs default.rb: "minimum" (its posix? branch pulls host-only binaries
-# mruby-bin-mrbc2 / picoruby-bin-picoruby that a cross-build can't produce) and
-# "networking" / OpenSSL (socket stack is out of scope). mruby-compiler2 + the
+# mruby-bin-mrbc / picoruby-bin-picoruby that a cross-build can't produce) and
+# "networking" / OpenSSL (socket stack is out of scope). mruby-compiler + the
 # picoruby VM are added directly, as the bare-VM config did.
 
 sdk_path = `xcrun --sdk iphonesimulator --show-sdk-path`.strip
@@ -51,10 +51,10 @@ MRuby::CrossBuild.new("ios-repl-sim") do |conf|
 
   conf.picoruby
 
-  # minimum.gembox replacement without its host-only binaries (mruby-bin-mrbc2 /
+  # minimum.gembox replacement without its host-only binaries (mruby-bin-mrbc /
   # picoruby-bin-picoruby): a cross-build can't produce host-runnable binaries.
   # The host mrbc tool is built by picoruby's build_mrbc_exec hook.
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   conf.gembox "mruby-posix"
   conf.gembox "core"

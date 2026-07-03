@@ -41,5 +41,5 @@ MRuby::CrossBuild.new("watchos-device") do |conf|
   conf.cc.defines << "MRB_HEAP_PAGE_SIZE=128"
 
   conf.picoruby
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 end

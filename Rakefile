@@ -7,7 +7,7 @@ PICORUBY_REF  = ENV["PICORUBY_REF"]  || "port-darwin"
 PICORUBY_SRC  = File.join(ROOT, "vendor", "picoruby")
 BUILD_DIR     = File.join(ROOT, "build")
 EXAMPLE       = ENV["EXAMPLE"] || "repl"
-APP_DIR       = File.join(ROOT, "examples", EXAMPLE)
+APP_DIR       = File.join(ROOT, "examples", "ios", EXAMPLE)
 VENDOR_DIR    = File.join(APP_DIR, "Vendor")
 BUNDLE_ID     = "com.bash0c7.picoruby.PicoRubyRunner"
 
@@ -142,20 +142,20 @@ namespace :ios do
   end
 
   namespace :stackchan do
-    STACKCHAN_DIR     = File.join(ROOT, "examples", "stackchan")
+    STACKCHAN_DIR     = File.join(ROOT, "examples", "ios", "stackchan")
     STACKCHAN_PROJ    = File.join(STACKCHAN_DIR, "Stackchan.xcodeproj")
     STACKCHAN_BUNDLE  = "com.bash0c7.picoruby.Stackchan"
     STACKCHAN_VENDOR  = File.join(STACKCHAN_DIR, "Vendor")
     STACKCHAN_DERIVED = File.join(ROOT, "build", "ios-stackchan-app")
     STACKCHAN_DEVICE_DERIVED = File.join(ROOT, "build", "ios-stackchan-app-device")
 
-    desc "Cross-build libmruby.a (Simulator) WITH picoruby-ble + Darwin port and stage under examples/stackchan/Vendor"
+    desc "Cross-build libmruby.a (Simulator) WITH picoruby-ble + Darwin port and stage under examples/ios/stackchan/Vendor"
     task lib: :setup do
       stage_libmruby("r2p2-picoruby-ios-stackchan-sim.rb", "ios-stackchan-sim", STACKCHAN_VENDOR)
     end
 
     namespace :device do
-      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-ble + Darwin port and stage under examples/stackchan/Vendor"
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-ble + Darwin port and stage under examples/ios/stackchan/Vendor"
       task lib: :setup do
         stage_libmruby("r2p2-picoruby-ios-stackchan-device.rb", "ios-stackchan-device", STACKCHAN_VENDOR)
       end
@@ -165,7 +165,7 @@ namespace :ios do
         # Target the SPECIFIC connected device (not generic/platform=iOS) so
         # -allowProvisioningUpdates can register it with the Personal Team and
         # generate a profile. Device slice is arm64; automatic signing resolves
-        # the team set in examples/stackchan/project.yml.
+        # the team set in examples/ios/stackchan/project.yml.
         dest = `xcodebuild -project #{STACKCHAN_PROJ.shellescape} -scheme Stackchan -showdestinations 2>/dev/null`.lines
                .grep(/platform:iOS,/).reject { |l| l =~ /Simulator|placeholder/ }
                .first&.match(/id:(\S+)/)&.captures&.first
@@ -226,20 +226,20 @@ namespace :ios do
   end
 
   namespace :vperiph do
-    VPERIPH_DIR     = File.join(ROOT, "examples", "virtual-peripheral")
+    VPERIPH_DIR     = File.join(ROOT, "examples", "ios", "virtual-peripheral")
     VPERIPH_PROJ    = File.join(VPERIPH_DIR, "VirtualPeripheral.xcodeproj")
     VPERIPH_BUNDLE  = "com.bash0c7.picoruby.VirtualPeripheral"
     VPERIPH_VENDOR  = File.join(VPERIPH_DIR, "Vendor")
     VPERIPH_DERIVED = File.join(ROOT, "build", "ios-vperiph-app")
     VPERIPH_DEVICE_DERIVED = File.join(ROOT, "build", "ios-vperiph-app-device")
 
-    desc "Cross-build libmruby.a (Simulator) WITH picoruby-ble + Darwin port and stage under examples/virtual-peripheral/Vendor"
+    desc "Cross-build libmruby.a (Simulator) WITH picoruby-ble + Darwin port and stage under examples/ios/virtual-peripheral/Vendor"
     task lib: :setup do
       stage_libmruby("r2p2-picoruby-ios-vperiph-sim.rb", "ios-vperiph-sim", VPERIPH_VENDOR)
     end
 
     namespace :device do
-      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-ble + Darwin port and stage under examples/virtual-peripheral/Vendor"
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-ble + Darwin port and stage under examples/ios/virtual-peripheral/Vendor"
       task lib: :setup do
         stage_libmruby("r2p2-picoruby-ios-vperiph-device.rb", "ios-vperiph-device", VPERIPH_VENDOR)
       end
@@ -313,14 +313,14 @@ namespace :ios do
   end
 
   namespace :torch do
-    TORCH_DIR     = File.join(ROOT, "examples", "iphone-torch")
+    TORCH_DIR     = File.join(ROOT, "examples", "ios", "iphone-torch")
     TORCH_PROJ    = File.join(TORCH_DIR, "Torch.xcodeproj")
     TORCH_BUNDLE  = "com.bash0c7.picoruby.Torch"
     TORCH_VENDOR  = File.join(TORCH_DIR, "Vendor")
     TORCH_DERIVED = File.join(ROOT, "build", "ios-torch-app")
     TORCH_DEVICE_DERIVED = File.join(ROOT, "build", "ios-torch-app-device")
 
-    desc "Cross-build libmruby.a (Simulator) WITH picoruby-iphone-torch and stage under examples/iphone-torch/Vendor"
+    desc "Cross-build libmruby.a (Simulator) WITH picoruby-iphone-torch and stage under examples/ios/iphone-torch/Vendor"
     task lib: :setup do
       stage_libmruby("r2p2-picoruby-ios-torch-sim.rb", "ios-torch-sim", TORCH_VENDOR)
     end
@@ -356,7 +356,7 @@ namespace :ios do
     task all: [:lib, :gen, :build, :run]
 
     namespace :device do
-      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-iphone-torch and stage under examples/iphone-torch/Vendor"
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-iphone-torch and stage under examples/ios/iphone-torch/Vendor"
       task lib: :setup do
         stage_libmruby("r2p2-picoruby-ios-torch-device.rb", "ios-torch-device", TORCH_VENDOR)
       end
@@ -391,14 +391,14 @@ namespace :ios do
   end
 
   namespace :net do
-    NET_DIR     = File.join(ROOT, "examples", "networking")
+    NET_DIR     = File.join(ROOT, "examples", "ios", "networking")
     NET_PROJ    = File.join(NET_DIR, "Networking.xcodeproj")
     NET_BUNDLE  = "com.bash0c7.picoruby.Networking"
     NET_VENDOR  = File.join(NET_DIR, "Vendor")
     NET_DERIVED = File.join(ROOT, "build", "ios-net-app")
     NET_DEVICE_DERIVED = File.join(ROOT, "build", "ios-net-app-device")
 
-    desc "Cross-build libmruby.a (Simulator) WITH picoruby-net (mbedTLS) and stage under examples/networking/Vendor"
+    desc "Cross-build libmruby.a (Simulator) WITH picoruby-net (mbedTLS) and stage under examples/ios/networking/Vendor"
     task lib: :setup do
       stage_libmruby("r2p2-picoruby-ios-net-sim.rb", "ios-net-sim", NET_VENDOR)
     end
@@ -434,7 +434,7 @@ namespace :ios do
     task all: [:lib, :gen, :build, :run]
 
     namespace :device do
-      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-net and stage under examples/networking/Vendor"
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH picoruby-net and stage under examples/ios/networking/Vendor"
       task lib: :setup do
         stage_libmruby("r2p2-picoruby-ios-net-device.rb", "ios-net-device", NET_VENDOR)
       end
@@ -466,91 +466,6 @@ namespace :ios do
       desc "Full Networking device pipeline: lib -> gen -> build -> run (needs a connected, signed device)"
       task all: [:lib, "ios:net:gen", :build, :run]
     end
-  end
-
-  namespace :watch do
-    WATCH_DIR     = File.join(ROOT, "examples", "watch-led-toggle")
-    WATCH_PROJ    = File.join(WATCH_DIR, "WatchLEDToggle.xcodeproj")
-    WATCH_BUNDLE  = "com.bash0c7.picoruby.WatchLEDToggle"
-    WATCH_VENDOR  = File.join(WATCH_DIR, "Vendor")
-    WATCH_DERIVED = File.join(ROOT, "build", "watchos-app")
-    WATCH_DEVICE_DERIVED = File.join(ROOT, "build", "watchos-app-device")
-
-    desc "Cross-build libmruby.a for watchOS Simulator and stage under examples/watch-led-toggle/Vendor"
-    task lib: :setup do
-      stage_libmruby("r2p2-picoruby-watchos-sim.rb", "watchos-sim", WATCH_VENDOR)
-    end
-
-    namespace :device do
-      desc "Cross-build libmruby.a for watchOS device (arm64_32) and stage under examples/watch-led-toggle/Vendor"
-      task lib: :setup do
-        stage_libmruby("r2p2-picoruby-watchos-device.rb", "watchos-device", WATCH_VENDOR)
-        # stage_libmruby copies the fat/arm64 archive mruby just built; the
-        # physical watch needs arm64_32. Recompile in place and re-stage so
-        # Vendor/lib never ends up with an arch the device can't run.
-        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape}"
-        lib = File.join(BUILD_DIR, "watchos-device", "lib", "libmruby.a")
-        cp lib, File.join(WATCH_VENDOR, "lib", "libmruby.a")
-        puts "Re-staged arm64_32 libmruby.a under #{WATCH_VENDOR}"
-      end
-
-      desc "Build the Watch LED Toggle app, signed, for the connected Apple Watch"
-      task :build do
-        dest = `xcodebuild -project #{WATCH_PROJ.shellescape} -scheme WatchLEDToggle -showdestinations 2>/dev/null`.lines
-               .grep(/platform:watchOS,/).reject { |l| l =~ /Simulator|placeholder/ }
-               .first&.match(/id:(\S+)/)&.captures&.first
-        raise "no connected watchOS device destination (xcodebuild -showdestinations)" unless dest
-        sh "xcodebuild -project #{WATCH_PROJ.shellescape} -scheme WatchLEDToggle " \
-           "-destination 'id=#{dest}' " \
-           "-derivedDataPath #{WATCH_DEVICE_DERIVED.shellescape} " \
-           "ARCHS=arm64_32 -allowProvisioningUpdates build"
-      end
-
-      desc "Install and launch the Watch LED Toggle app on the connected Apple Watch"
-      task :run do
-        app = Dir.glob(File.join(WATCH_DEVICE_DERIVED, "Build", "Products",
-                                 "*-watchos", "WatchLEDToggle.app")).first
-        raise "app not built; run `rake ios:watch:device:build`" unless app
-        dev = `xcrun devicectl list devices`.lines
-              .grep(/Watch/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
-        raise "no connected Apple Watch (xcrun devicectl list devices)" unless dev
-        sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
-        sh "xcrun devicectl device process launch --console --device #{dev} #{WATCH_BUNDLE}"
-      end
-
-      desc "Full Watch device pipeline: lib -> gen -> build -> run (needs a connected, signed Apple Watch)"
-      task all: [:lib, "ios:watch:gen", :build, :run]
-    end
-
-    desc "Generate the Watch LED Toggle Xcode project from project.yml"
-    task :gen do
-      sh "cd #{WATCH_DIR.shellescape} && xcodegen generate"
-    end
-
-    desc "Build the Watch LED Toggle app for the watchOS Simulator"
-    task :build do
-      sh "xcodebuild -project #{WATCH_PROJ.shellescape} " \
-         "-scheme WatchLEDToggle -destination 'generic/platform=watchOS Simulator' " \
-         "-derivedDataPath #{WATCH_DERIVED.shellescape} " \
-         "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO build"
-    end
-
-    desc "Boot a watchOS simulator, install, and launch the Watch LED Toggle app"
-    task :run do
-      app = Dir.glob(File.join(WATCH_DERIVED, "Build", "Products",
-                               "*-watchsimulator", "WatchLEDToggle.app")).first
-      raise "app not built; run `rake ios:watch:build`" unless app
-      udid = `xcrun simctl list devices available`.lines
-             .grep(/Apple Watch/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
-      raise "no available Apple Watch simulator" unless udid
-      sh "xcrun simctl boot #{udid} 2>/dev/null; true"
-      sh "open -a Simulator"
-      sh "xcrun simctl install #{udid} #{app.shellescape}"
-      sh "xcrun simctl launch #{udid} #{WATCH_BUNDLE}"
-    end
-
-    desc "Full Watch pipeline: lib -> gen -> build -> run"
-    task all: [:lib, :gen, :build, :run]
   end
 
   desc "Generate the Xcode project from project.yml"
@@ -587,6 +502,93 @@ namespace :ios do
   task all: [:lib, :gen, :build, :run]
 end
 
+namespace :watchos do
+  namespace :led do
+    WATCH_DIR     = File.join(ROOT, "examples", "watchos", "led-toggle")
+    WATCH_PROJ    = File.join(WATCH_DIR, "WatchLEDToggle.xcodeproj")
+    WATCH_BUNDLE  = "com.bash0c7.picoruby.WatchLEDToggle"
+    WATCH_VENDOR  = File.join(WATCH_DIR, "Vendor")
+    WATCH_DERIVED = File.join(ROOT, "build", "watchos-app")
+    WATCH_DEVICE_DERIVED = File.join(ROOT, "build", "watchos-app-device")
+
+    desc "Cross-build libmruby.a for watchOS Simulator and stage under examples/watchos/led-toggle/Vendor"
+    task lib: :setup do
+      stage_libmruby("r2p2-picoruby-watchos-sim.rb", "watchos-sim", WATCH_VENDOR)
+    end
+
+    namespace :device do
+      desc "Cross-build libmruby.a for watchOS device (arm64_32) and stage under examples/watchos/led-toggle/Vendor"
+      task lib: :setup do
+        stage_libmruby("r2p2-picoruby-watchos-device.rb", "watchos-device", WATCH_VENDOR)
+        # stage_libmruby copies the fat/arm64 archive mruby just built; the
+        # physical watch needs arm64_32. Recompile in place and re-stage so
+        # Vendor/lib never ends up with an arch the device can't run.
+        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape}"
+        lib = File.join(BUILD_DIR, "watchos-device", "lib", "libmruby.a")
+        cp lib, File.join(WATCH_VENDOR, "lib", "libmruby.a")
+        puts "Re-staged arm64_32 libmruby.a under #{WATCH_VENDOR}"
+      end
+
+      desc "Build the Watch LED Toggle app, signed, for the connected Apple Watch"
+      task :build do
+        dest = `xcodebuild -project #{WATCH_PROJ.shellescape} -scheme WatchLEDToggle -showdestinations 2>/dev/null`.lines
+               .grep(/platform:watchOS,/).reject { |l| l =~ /Simulator|placeholder/ }
+               .first&.match(/id:(\S+)/)&.captures&.first
+        raise "no connected watchOS device destination (xcodebuild -showdestinations)" unless dest
+        sh "xcodebuild -project #{WATCH_PROJ.shellescape} -scheme WatchLEDToggle " \
+           "-destination 'id=#{dest}' " \
+           "-derivedDataPath #{WATCH_DEVICE_DERIVED.shellescape} " \
+           "ARCHS=arm64_32 -allowProvisioningUpdates build"
+      end
+
+      desc "Install and launch the Watch LED Toggle app on the connected Apple Watch"
+      task :run do
+        app = Dir.glob(File.join(WATCH_DEVICE_DERIVED, "Build", "Products",
+                                 "*-watchos", "WatchLEDToggle.app")).first
+        raise "app not built; run `rake watchos:led:device:build`" unless app
+        dev = `xcrun devicectl list devices`.lines
+              .grep(/Watch/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
+        raise "no connected Apple Watch (xcrun devicectl list devices)" unless dev
+        sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
+        sh "xcrun devicectl device process launch --console --device #{dev} #{WATCH_BUNDLE}"
+      end
+
+      desc "Full Watch device pipeline: lib -> gen -> build -> run (needs a connected, signed Apple Watch)"
+      task all: [:lib, "watchos:led:gen", :build, :run]
+    end
+
+    desc "Generate the Watch LED Toggle Xcode project from project.yml"
+    task :gen do
+      sh "cd #{WATCH_DIR.shellescape} && xcodegen generate"
+    end
+
+    desc "Build the Watch LED Toggle app for the watchOS Simulator"
+    task :build do
+      sh "xcodebuild -project #{WATCH_PROJ.shellescape} " \
+         "-scheme WatchLEDToggle -destination 'generic/platform=watchOS Simulator' " \
+         "-derivedDataPath #{WATCH_DERIVED.shellescape} " \
+         "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO build"
+    end
+
+    desc "Boot a watchOS simulator, install, and launch the Watch LED Toggle app"
+    task :run do
+      app = Dir.glob(File.join(WATCH_DERIVED, "Build", "Products",
+                               "*-watchsimulator", "WatchLEDToggle.app")).first
+      raise "app not built; run `rake watchos:led:build`" unless app
+      udid = `xcrun simctl list devices available`.lines
+             .grep(/Apple Watch/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
+      raise "no available Apple Watch simulator" unless udid
+      sh "xcrun simctl boot #{udid} 2>/dev/null; true"
+      sh "open -a Simulator"
+      sh "xcrun simctl install #{udid} #{app.shellescape}"
+      sh "xcrun simctl launch #{udid} #{WATCH_BUNDLE}"
+    end
+
+    desc "Full Watch pipeline: lib -> gen -> build -> run"
+    task all: [:lib, :gen, :build, :run]
+  end
+end
+
 desc "Build and launch the PicoRuby iOS Runner on the Simulator"
 task ios: "ios:all"
 
@@ -613,14 +615,14 @@ task smoke: "host:lib" do
     MRB_USE_TASK_SCHEDULER=1 MRB_USE_VM_SWITCH_DISPATCH=1
   ].map { |d| "-D#{d}" }.join(" ")
 
-  # picoruby.h uses angle-bracket includes for mrc_common.h (mruby-compiler2),
-  # mruby.h (picoruby-mruby/lib/mruby), and prism.h (mruby-compiler2/lib/prism).
+  # picoruby.h uses angle-bracket includes for mrc_common.h (mruby-compiler),
+  # mruby.h (picoruby-mruby/lib/mruby), and prism.h (mruby-compiler/lib/prism).
   # build/host/include supplies the generated presym/id.h.
   # task.h is in mruby-task/include.
   includes = [
     File.join(PICORUBY_SRC, "include"),
-    File.join(PICORUBY_SRC, "mrbgems", "mruby-compiler2", "include"),
-    File.join(PICORUBY_SRC, "mrbgems", "mruby-compiler2", "lib", "prism", "include"),
+    File.join(PICORUBY_SRC, "mrbgems", "mruby-compiler", "include"),
+    File.join(PICORUBY_SRC, "mrbgems", "mruby-compiler", "lib", "prism", "include"),
     File.join(PICORUBY_SRC, "mrbgems", "picoruby-mruby", "lib", "mruby", "include"),
     File.join(PICORUBY_SRC, "mrbgems", "picoruby-mruby", "include"),
     File.join(BUILD_DIR, "host", "include"),

@@ -61,7 +61,7 @@ MRuby::CrossBuild.new("ios-net-sim") do |conf|
 
   # Full-REPL surface (minus host-only binaries), identical to the REPL config so
   # the networking example can also run interactive Ruby.
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
   conf.gembox "mruby-posix"
   conf.gembox "core"
   conf.gembox "stdlib"

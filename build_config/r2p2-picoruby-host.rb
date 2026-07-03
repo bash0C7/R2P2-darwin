@@ -18,5 +18,5 @@ MRuby::Build.new("host") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 end

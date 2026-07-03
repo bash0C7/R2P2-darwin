@@ -1,4 +1,4 @@
-# watch-led-toggle — an LED blink, in Ruby, on the Apple Watch
+# led-toggle — an LED blink, in Ruby, on the Apple Watch
 
 The embedded "hello world" is the blinking LED. An Apple Watch has no LED, so
 this example stands one in on screen: a 🔴 / 🔵 you toggle by tapping. The state
@@ -72,7 +72,7 @@ but **32-bit pointers**. The Simulator on an Apple-silicon Mac is ordinary 64-bi
 ### 2. Producing an `arm64_32` `libmruby.a`
 
 picoruby's mruby build (`MRuby::CrossBuild`) compiles host-arch / `arm64`
-objects; it does not target `arm64_32` directly. `rake ios:watch:device:lib`
+objects; it does not target `arm64_32` directly. `rake watchos:led:device:lib`
 handles both steps as one task: it cross-builds with
 `build_config/r2p2-picoruby-watchos-device.rb`, then runs
 `build_config/recompile_arm64_32.rb` and re-stages the result under
@@ -94,7 +94,7 @@ agree byte-for-byte, or the final archive mixes objects with different
 
 | compiler | defines come from |
 |---|---|
-| `rake ios:watch:device:lib` (mruby objects) | `build_config/r2p2-picoruby-watchos-device.rb` |
+| `rake watchos:led:device:lib` (mruby objects) | `build_config/r2p2-picoruby-watchos-device.rb` |
 | `recompile_arm64_32.rb` (arm64_32 recompile) | **parses the same build_config** |
 | Xcode (`picoruby_bridge.c`, app) | `project.yml` `GCC_PREPROCESSOR_DEFINITIONS` |
 
@@ -120,25 +120,25 @@ that thread's serial queue, so the whole VM lifetime stays single-threaded.
 | `Sources/WatchLEDToggle-Bridging-Header.h` | exposes the C VM bridge to Swift |
 | `project.yml` | xcodegen project: `WKWatchOnly`, links `-lmruby`, mirrors the ABI defines |
 
-The VM, the C bridge (`../../bridge`), and the build configs (`../../build_config`)
-live one level up; this directory is the app plus `app.rb`.
+The VM, the C bridge (`../../../bridge`), and the build configs (`../../../build_config`)
+live at the repo root; this directory is the app plus `app.rb`.
 
 ## Run it
 
 ### Simulator
 
 ```sh
-rake ios:watch:all     # lib -> gen -> build -> boot a watch sim -> install -> launch
+rake watchos:led:all     # lib -> gen -> build -> boot a watch sim -> install -> launch
 ```
 
 ### Physical Apple Watch (`arm64_32`)
 
 ```sh
-rake ios:watch:device:all   # lib (+ arm64_32 recompile) -> gen -> build -> install -> launch
+rake watchos:led:device:all   # lib (+ arm64_32 recompile) -> gen -> build -> install -> launch
 ```
 
-Or step by step: `rake ios:watch:device:lib && rake ios:watch:gen &&
-rake ios:watch:device:build && rake ios:watch:device:run`. `:run` finds the
+Or step by step: `rake watchos:led:device:lib && rake watchos:led:gen &&
+rake watchos:led:device:build && rake watchos:led:device:run`. `:run` finds the
 paired watch via `xcrun devicectl list devices` automatically.
 
 On launch the console shows `booted` then `VM opened` (the boot Ruby ran and the

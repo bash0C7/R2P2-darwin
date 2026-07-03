@@ -62,7 +62,7 @@ MRuby::CrossBuild.new("ios-vperiph-sim") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   # --- Virtual Peripheral: picoruby-ble + CoreBluetooth Darwin port -----------------
   # Select the Darwin port for every gem that ships one. picoruby-ble's `setup`

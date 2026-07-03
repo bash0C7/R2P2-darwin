@@ -50,7 +50,7 @@ MRuby::CrossBuild.new("ios-vperiph-device") do |conf|
 
   conf.picoruby
 
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   # --- Virtual Peripheral: picoruby-ble + CoreBluetooth Darwin port -----------------
   conf.ports :darwin

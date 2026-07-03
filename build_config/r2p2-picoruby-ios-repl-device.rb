@@ -44,10 +44,10 @@ MRuby::CrossBuild.new("ios-repl-device") do |conf|
 
   conf.picoruby
 
-  # minimum.gembox replacement without its host-only binaries (mruby-bin-mrbc2 /
+  # minimum.gembox replacement without its host-only binaries (mruby-bin-mrbc /
   # picoruby-bin-picoruby): a cross-build can't produce host-runnable binaries.
   # The host mrbc tool is built by picoruby's build_mrbc_exec hook.
-  conf.gem core: "mruby-compiler2"
+  conf.gem core: "mruby-compiler"
 
   conf.gembox "mruby-posix"
   conf.gembox "core"

@@ -49,7 +49,7 @@ connectivity + handshake, not a trust decision.
 
 This example only works against a `vendor/picoruby` that carries the
 `picoruby-net` POSIX recv-buffer allocator fix — see the root README's
-["Fork fix: picoruby-net POSIX recv-buffer allocator"](../../README.md#fork-fix-picoruby-net-posix-recv-buffer-allocator)
+["Fork fix: picoruby-net POSIX recv-buffer allocator"](../../../README.md#fork-fix-picoruby-net-posix-recv-buffer-allocator)
 section. Without it, a response arriving over the custom `estalloc` VM
 allocator corrupts the free-list and crashes right after the handshake
 completes (looks like a hang, since captured stdout only flushes on return).
