@@ -10,3 +10,7 @@
 /HANDOFF.md
 # isolated worktrees (harness-managed)
 /.claude/worktrees/
+# macos:single staging
+/tmp/
+# Claude Code local-only settings (permission grants etc.)
+/.claude/settings.local.json
