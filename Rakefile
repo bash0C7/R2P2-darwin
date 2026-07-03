@@ -3,7 +3,7 @@ require "rbconfig"
 
 ROOT          = __dir__
 PICORUBY_REPO = ENV["PICORUBY_REPO"] || "https://github.com/bash0C7/picoruby.git"
-PICORUBY_REF  = ENV["PICORUBY_REF"]  || "picoruby-ble-darwin-port"
+PICORUBY_REF  = ENV["PICORUBY_REF"]  || "port-darwin"
 PICORUBY_SRC  = File.join(ROOT, "vendor", "picoruby")
 BUILD_DIR     = File.join(ROOT, "build")
 EXAMPLE       = ENV["EXAMPLE"] || "repl"

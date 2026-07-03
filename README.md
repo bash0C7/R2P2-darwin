@@ -41,7 +41,7 @@ The picoruby tree and deployment target are selectable by env:
 
 ```
 PICORUBY_REPO   default: https://github.com/bash0C7/picoruby.git
-PICORUBY_REF    default: picoruby-ble-darwin-port  (master + picoruby-ble Darwin port)
+PICORUBY_REF    default: port-darwin  (master + darwin ports: ble/rng/mbedtls/io-console/machine + net fix)
 IOS_MIN         default: 17.0   (iOS deployment minimum)
 EXAMPLE         default: repl   (which examples/<name> the base ios:* tasks build)
 ```
@@ -231,7 +231,7 @@ fabricating one) — not a bug.
 ## Fork fix: picoruby-net POSIX recv-buffer allocator
 
 The default `vendor/picoruby` source (the `bash0C7/picoruby` fork, branch
-`picoruby-ble-darwin-port`) carries a fix to **picoruby-net's POSIX port** that
+`port-darwin`) carries a fix to **picoruby-net's POSIX port** that
 R2P2-iOS depends on. Commit `1a055b62`,
 `fix(net/posix): allocate recv buffer with mruby allocator, not system malloc`.
 
