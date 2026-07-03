@@ -1,192 +1,141 @@
-# R2P2-macOS — host-side build harness for picoruby on Darwin.
-#
-# Fetches a picoruby tree from GitHub into vendor/picoruby and builds it on a
-# macOS host. Build output is redirected into ./build via MRUBY_BUILD_DIR so
-# the fetched source stays pristine.
-#
-#   PICORUBY_REPO  default https://github.com/picoruby/picoruby.git
-#   PICORUBY_REF   default master
-#   MRUBY_CONFIG   default build_config/r2p2-picoruby-darwin.rb (Darwin host
-#                  base). Override to point at the BLE variant or another
-#                  bundled config.
-#
-# Why this repo: picoruby/picoruby ships per-target build_config files
-# (r2p2-picoruby-pico2.rb etc.) but as of 2026-06-20 has no equivalent for a
-# Darwin host. Until that lands upstream, R2P2-macOS stores the Darwin host
-# build config and pins the per-host prerequisites (Xcode CLT, brew openssl@3,
-# Swift toolchain) via `rake check`.
-
-require "shellwords"
-
-R2P2_MACOS_ROOT = __dir__
-PICORUBY_REPO   = ENV["PICORUBY_REPO"] || "https://github.com/picoruby/picoruby.git"
-PICORUBY_REF    = ENV["PICORUBY_REF"]  || "master"
-PICORUBY_SRC    = File.join(R2P2_MACOS_ROOT, "vendor", "picoruby")
-BUILD_DIR       = File.join(R2P2_MACOS_ROOT, "build")
+# rakelib/macos.rake — macOS (Darwin) host-native build & run.
+# Relies on the main Rakefile's ROOT / PICORUBY_SRC / BUILD_DIR constants and
+# its `setup` task; adds the macos: namespace (check, build, run, single)
+# plus the brew openssl@3 flags the networking gembox needs.
 
 # Brew openssl@3 prefix on LDFLAGS/CFLAGS so the networking gembox can find
-# ssl/crypto. macOS-specific: brew installs into /opt/homebrew which is not
-# on the default ld search path. Inert if openssl@3 isn't brew-installed.
-def build_env
+# ssl/crypto. Inert if openssl@3 isn't brew-installed.
+def macos_build_env
   env = { "MRUBY_BUILD_DIR" => BUILD_DIR }
   ssl = `brew --prefix openssl@3 2>/dev/null`.strip
   unless ssl.empty?
     env["LDFLAGS"] = [ENV["LDFLAGS"], "-L#{ssl}/lib"].compact.join(" ")
     env["CFLAGS"]  = [ENV["CFLAGS"],  "-I#{ssl}/include"].compact.join(" ")
   end
-  cfg = ENV["MRUBY_CONFIG"] || File.join(R2P2_MACOS_ROOT, "build_config", "r2p2-picoruby-darwin.rb")
+  cfg = ENV["MRUBY_CONFIG"] || File.join(ROOT, "build_config", "r2p2-picoruby-darwin.rb")
   env["MRUBY_CONFIG"] = File.absolute_path(cfg)
   env
 end
 
-desc "Verify macOS prerequisites (Xcode CLT, brew openssl@3, Swift)"
-task :check do
-  ok = true
-  if system("xcode-select", "-p", out: File::NULL, err: File::NULL)
-    puts "Xcode CLT:  ok"
-  else
-    warn "Xcode CLT:  missing — run `xcode-select --install`"
-    ok = false
-  end
-
-  ssl = `brew --prefix openssl@3 2>/dev/null`.strip
-  if ssl.empty?
-    warn "openssl@3:  missing — run `brew install openssl@3` (networking gem links ssl/crypto)"
-    ok = false
-  else
-    puts "openssl@3:  #{ssl}"
-  end
-
-  swift = `swift --version 2>/dev/null`.lines.first&.strip
-  if swift.nil? || swift.empty?
-    warn "Swift:      missing — install Xcode (needed for the picoruby-ble Darwin port)"
-  else
-    puts "Swift:      #{swift}"
-  end
-
-  abort "missing prerequisites" unless ok
-end
-
-desc "Fetch picoruby from PICORUBY_REPO at PICORUBY_REF into vendor/picoruby"
-task :setup do
-  unless Dir.exist?(PICORUBY_SRC)
-    sh "git clone --recursive --branch #{PICORUBY_REF.shellescape} " \
-       "#{PICORUBY_REPO.shellescape} #{PICORUBY_SRC.shellescape}"
-  end
-end
-
-desc "Re-fetch PICORUBY_REF into the existing vendor/picoruby (no re-clone)"
-task :refresh do
-  raise "vendor/picoruby absent; run `rake setup` first" unless Dir.exist?(PICORUBY_SRC)
-  sh "git -C #{PICORUBY_SRC.shellescape} fetch #{PICORUBY_REPO.shellescape} #{PICORUBY_REF.shellescape}"
-  sh "git -C #{PICORUBY_SRC.shellescape} checkout -B #{PICORUBY_REF.shellescape} FETCH_HEAD"
-  sh "git -C #{PICORUBY_SRC.shellescape} submodule update --init --recursive"
-end
-
-desc "Build the fetched picoruby tree into ./build"
-task build: :setup do
-  sh build_env, "cd #{PICORUBY_SRC.shellescape} && rake"
-end
-
-desc "Run the r2p2 shell, or APP=path/to.rb on the picoruby runner"
-task :run do
-  r2p2 = File.join(BUILD_DIR, "host", "bin", "r2p2")
-  pr   = File.join(BUILD_DIR, "host", "bin", "picoruby")
-  if (app = ENV["APP"])
-    raise "Not built. Run `rake build` first." unless File.executable?(pr)
-    exec({}, pr, app)
-  elsif File.executable?(r2p2)
-    exec({}, r2p2)
-  else
-    raise "Not built (or this build has no r2p2 shell — try APP=path/to.rb)."
-  end
-end
-
-desc "Build a single binary embedding APP=path/to/app.rb (NAME defaults to APP basename)"
-task single: :setup do
-  app = ENV["APP"] or abort "APP=path/to/app.rb is required"
-  abort "APP not found: #{app}" unless File.file?(app)
-  name = (ENV["NAME"] || File.basename(app, ".rb")).downcase
-  abort "NAME must match /\\A[a-z][a-z0-9_-]*\\z/ (got: #{name.inspect})" unless name =~ /\A[a-z][a-z0-9_-]*\z/
-
-  staging = File.join(R2P2_MACOS_ROOT, "tmp", "single")
-  gem_dir = File.join(staging, "picoruby-bin-#{name}")
-  rm_rf staging
-  mkdir_p File.join(gem_dir, "mrblib")
-  mkdir_p File.join(gem_dir, "tools", name)
-
-  File.write(File.join(gem_dir, "mrbgem.rake"), <<~MRBGEM)
-    MRuby::Gem::Specification.new('picoruby-bin-#{name}') do |spec|
-      spec.license = 'MIT'
-      spec.author  = ''
-      spec.summary = 'PicoRuby single-binary built by R2P2-macOS rake single'
-
-      spec.add_dependency 'picoruby-mruby'
-
-      bin_name = '#{name}'
-      build.bins << bin_name
-
-      main_src = "\#{spec.dir}/tools/\#{bin_name}/\#{bin_name}.c"
-      bin_obj  = objfile(main_src.pathmap("\#{build_dir}/tools/\#{bin_name}/%n"))
-
-      file bin_obj => [main_src] do |t|
-        build.cc.run t.name, main_src
-      end
-
-      file exefile("\#{build.build_dir}/bin/\#{bin_name}") => [bin_obj, build.libmruby_static] do |f|
-        build.linker.run f.name, f.prerequisites
-      end
+namespace :macos do
+  desc "Verify macOS host prerequisites (Xcode CLT, brew openssl@3, Swift)"
+  task :check do
+    ok = true
+    if system("xcode-select", "-p", out: File::NULL, err: File::NULL)
+      puts "Xcode CLT:  ok"
+    else
+      warn "Xcode CLT:  missing — run `xcode-select --install`"
+      ok = false
     end
-  MRBGEM
+    ssl = `brew --prefix openssl@3 2>/dev/null`.strip
+    if ssl.empty?
+      warn "openssl@3:  missing — run `brew install openssl@3` (networking gem links ssl/crypto)"
+      ok = false
+    else
+      puts "openssl@3:  #{ssl}"
+    end
+    swift = `swift --version 2>/dev/null`.lines.first&.strip
+    if swift.nil? || swift.empty?
+      warn "Swift:      missing — install Xcode (needed for the picoruby-ble Darwin port)"
+    else
+      puts "Swift:      #{swift}"
+    end
+    abort "missing prerequisites" unless ok
+  end
 
-  cp app, File.join(gem_dir, "mrblib", "app.rb")
+  desc "Host-native build of the fetched picoruby tree into ./build"
+  task build: :setup do
+    sh macos_build_env, "cd #{PICORUBY_SRC.shellescape} && rake"
+  end
 
-  File.write(File.join(gem_dir, "tools", name, "#{name}.c"), <<~C_MAIN)
-    #include <stdio.h>
-    #include <stdint.h>
+  desc "Run the r2p2 shell, or APP=path/to.rb on the picoruby runner"
+  task :run do
+    r2p2 = File.join(BUILD_DIR, "host", "bin", "r2p2")
+    pr   = File.join(BUILD_DIR, "host", "bin", "picoruby")
+    if (app = ENV["APP"])
+      raise "Not built. Run `rake macos:build` first." unless File.executable?(pr)
+      exec({}, pr, app)
+    elsif File.executable?(r2p2)
+      exec({}, r2p2)
+    else
+      raise "Not built (or this build has no r2p2 shell — try APP=path/to.rb)."
+    end
+  end
 
-    #if !defined(PICORB_PLATFORM_POSIX)
-    #define PICORB_PLATFORM_POSIX 1
-    #endif
+  desc "Build a single binary embedding APP=path/to/app.rb (NAME defaults to APP basename)"
+  task single: :setup do
+    app = ENV["APP"] or abort "APP=path/to/app.rb is required"
+    abort "APP not found: #{app}" unless File.file?(app)
+    name = (ENV["NAME"] || File.basename(app, ".rb")).downcase
+    abort "NAME must match /\\A[a-z][a-z0-9_-]*\\z/ (got: #{name.inspect})" unless name =~ /\A[a-z][a-z0-9_-]*\z/
 
-    #include "picoruby.h"
+    staging = File.join(ROOT, "tmp", "single")
+    gem_dir = File.join(staging, "picoruby-bin-#{name}")
+    rm_rf staging
+    mkdir_p File.join(gem_dir, "mrblib")
+    mkdir_p File.join(gem_dir, "tools", name)
 
-    #ifndef HEAP_SIZE
-    #define HEAP_SIZE (1024 * 2000)
-    #endif
+    File.write(File.join(gem_dir, "mrbgem.rake"), <<~MRBGEM)
+      MRuby::Gem::Specification.new('picoruby-bin-#{name}') do |spec|
+        spec.license = 'MIT'
+        spec.author  = ''
+        spec.summary = 'PicoRuby single-binary built by rake macos:single'
 
-    static uint8_t vm_heap[HEAP_SIZE] __attribute__((aligned(16)));
+        spec.add_dependency 'picoruby-mruby'
 
-    mrb_state *global_mrb = NULL;
+        bin_name = '#{name}'
+        build.bins << bin_name
 
-    int main(int argc, char **argv) {
-      (void)argc;
-      mrb_state *vm = NULL;
-      picorb_vm_init();
-      mrb_close(vm);
-      return 0;
-    }
-  C_MAIN
+        main_src = "\#{spec.dir}/tools/\#{bin_name}/\#{bin_name}.c"
+        bin_obj  = objfile(main_src.pathmap("\#{build_dir}/tools/\#{bin_name}/%n"))
 
-  single_cfg = File.join(R2P2_MACOS_ROOT, "build_config", "r2p2-picoruby-darwin-single.rb")
-  env = build_env.merge(
-    "MRUBY_CONFIG"         => File.absolute_path(single_cfg),
-    "R2P2_SINGLE_GEM_PATH" => gem_dir,
-  )
-  sh env, "cd #{PICORUBY_SRC.shellescape} && rake"
+        file bin_obj => [main_src] do |t|
+          build.cc.run t.name, main_src
+        end
 
-  puts ""
-  puts "Single binary built: #{File.join(BUILD_DIR, "host", "bin", name)}"
+        file exefile("\#{build.build_dir}/bin/\#{bin_name}") => [bin_obj, build.libmruby_static] do |f|
+          build.linker.run f.name, f.prerequisites
+        end
+      end
+    MRBGEM
+
+    cp app, File.join(gem_dir, "mrblib", "app.rb")
+
+    File.write(File.join(gem_dir, "tools", name, "#{name}.c"), <<~C_MAIN)
+      #include <stdio.h>
+      #include <stdint.h>
+
+      #if !defined(PICORB_PLATFORM_POSIX)
+      #define PICORB_PLATFORM_POSIX 1
+      #endif
+
+      #include "picoruby.h"
+
+      #ifndef HEAP_SIZE
+      #define HEAP_SIZE (1024 * 2000)
+      #endif
+
+      static uint8_t vm_heap[HEAP_SIZE] __attribute__((aligned(16)));
+
+      mrb_state *global_mrb = NULL;
+
+      int main(int argc, char **argv) {
+        (void)argc;
+        mrb_state *vm = NULL;
+        picorb_vm_init();
+        mrb_close(vm);
+        return 0;
+      }
+    C_MAIN
+
+    single_cfg = File.join(ROOT, "build_config", "r2p2-picoruby-darwin-single.rb")
+    env = macos_build_env.merge(
+      "MRUBY_CONFIG"         => File.absolute_path(single_cfg),
+      "R2P2_SINGLE_GEM_PATH" => gem_dir,
+    )
+    sh env, "cd #{PICORUBY_SRC.shellescape} && rake"
+
+    puts ""
+    puts "Single binary built: #{File.join(BUILD_DIR, "host", "bin", name)}"
+  end
 end
-
-desc "Remove build output (keeps vendor/picoruby)"
-task :clean do
-  rm_rf BUILD_DIR
-end
-
-desc "Remove build output and vendor/picoruby"
-task clobber: :clean do
-  rm_rf PICORUBY_SRC
-end
-
-task default: :build
