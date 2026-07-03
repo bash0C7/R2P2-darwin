@@ -49,5 +49,5 @@ MRuby::CrossBuild.new("ios-torch-sim") do |conf|
   # ports/darwin/torch.c. ptorch_* stay undefined in libmruby.a (resolved when the
   # PicoTorchDarwin Swift package links into the app target).
   conf.ports :darwin
-  conf.gem File.expand_path("../examples/iphone-torch/picoruby-iphone-torch", __dir__)
+  conf.gem File.expand_path("../examples/ios/iphone-torch/picoruby-iphone-torch", __dir__)
 end
