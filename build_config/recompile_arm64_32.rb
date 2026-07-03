@@ -14,7 +14,7 @@ AR        = `xcrun --sdk watchos --find ar`.strip
 
 # Single source of truth: read the cc.defines straight from the device
 # build_config so the arm64_32 recompile can never drift from what `rake
-# ios:watch:device:lib` compiled the other objects with. A mismatch here
+# watchos:led:device:lib` compiled the other objects with. A mismatch here
 # (esp. MRB_INT64 / MRB_NO_BOXING) yields a libmruby.a whose objects disagree
 # on the mrb_value layout — a silent on-device corruption.
 CONFIG_RB = File.join(__dir__, "r2p2-picoruby-watchos-device.rb")

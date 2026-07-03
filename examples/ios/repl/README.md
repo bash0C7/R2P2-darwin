@@ -22,7 +22,7 @@ ContentView (TextEditor + Run)
   String shown in the output view
 ```
 
-`repl_eval(const char *src)` (see `../../bridge/picoruby_bridge.h`) opens a fresh
+`repl_eval(const char *src)` (see `../../../bridge/picoruby_bridge.h`) opens a fresh
 VM, compiles and runs `src`, and returns the captured stdout+stderr as a string.
 A new VM per Run means each evaluation starts clean. `ContentView.run()` calls it
 on a background thread and frees the returned string.
@@ -36,8 +36,8 @@ on a background thread and frees the returned string.
 | `Sources/PicoRubyRunner-Bridging-Header.h` | exposes the C bridge to Swift |
 | `project.yml` | xcodegen project (links `-lmruby`, the staged `libmruby.a`) |
 
-The Ruby VM, the bridge, and the build configs live one level up (`../../bridge`,
-`../../build_config`); this directory is only the app.
+The Ruby VM, the bridge, and the build configs live at the repo root (`../../../bridge`,
+`../../../build_config`); this directory is only the app.
 
 ## Run it
 

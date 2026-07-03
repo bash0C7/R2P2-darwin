@@ -58,7 +58,7 @@ First launch: iOS will prompt for Bluetooth permission — allow it.
 of BLE on host CRuby:
 
 ```
-ruby examples/stackchan/test_frames.rb   # all PASS, no BLE hardware needed
+ruby examples/ios/stackchan/test_frames.rb   # all PASS, no BLE hardware needed
 ```
 
 ## Architecture

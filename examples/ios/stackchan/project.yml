@@ -7,7 +7,7 @@ packages:
   # The Darwin (CoreBluetooth) BLE backend Swift package. Its pble_* C symbols
   # resolve the undefined references in the staged libmruby.a at app link time.
   PicoBLEDarwin:
-    path: ../../vendor/picoruby/mrbgems/picoruby-ble/ports/darwin/ext
+    path: ../../../vendor/picoruby/mrbgems/picoruby-ble/ports/darwin/ext
 targets:
   Stackchan:
     type: application
@@ -16,7 +16,7 @@ targets:
       - path: Sources
       - path: app.rb
         buildPhase: resources
-      - path: ../../bridge
+      - path: ../../../bridge
         includes:
           - "picoruby_bridge.c"
           - "picoruby_bridge.h"
@@ -44,15 +44,15 @@ targets:
           - "MRB_CONSTRAINED_BASELINE_PROFILE=1"
           - "MRB_HEAP_PAGE_SIZE=128"
         HEADER_SEARCH_PATHS:
-          - "$(SRCROOT)/../../vendor/picoruby/include"
-          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/mruby-compiler2/include"
-          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/mruby-compiler2/lib/prism/include"
-          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include"
-          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/include"
-          - "$(SRCROOT)/../../build/ios-stackchan-sim/include"
-          - "$(SRCROOT)/../../build/ios-stackchan-device/include"
-          - "$(SRCROOT)/../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
-          - "$(SRCROOT)/../../bridge"
+          - "$(SRCROOT)/../../../vendor/picoruby/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/mruby-compiler/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/mruby-compiler/lib/prism/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/include"
+          - "$(SRCROOT)/../../../build/ios-stackchan-sim/include"
+          - "$(SRCROOT)/../../../build/ios-stackchan-device/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
+          - "$(SRCROOT)/../../../bridge"
         LIBRARY_SEARCH_PATHS:
           - "$(SRCROOT)/Vendor/lib"
         OTHER_LDFLAGS:
