@@ -12,13 +12,19 @@ import os
 // anti-click measure -- the note mapping itself stays a hard snap, decided
 // entirely in Ruby.
 
-// nonisolated(unsafe): engine/sourceNode/interruptionObserver are mutated
-// only from psynth_start/psynth_stop/installInterruptionHandlerOnce (VM tick
-// thread, effectively single-writer setup/teardown calls); renderState is
-// touched only from inside the AVAudioSourceNode render closure itself
-// (the real-time audio thread), never concurrently from elsewhere. None of
-// this is visible to the Swift 6 strict-concurrency checker since these are
-// globals, so the annotation documents/asserts the safety argument above.
+// nonisolated(unsafe): engine/sourceNode are touched from two different
+// queues -- the VM-tick queue (psynth_start/psynth_stop) and the main queue
+// (the interruption handler installed below, which calls .pause()/.start()
+// on .began/.ended). This is NOT single-writer; safety instead relies on
+// AVAudioEngine's own transport calls (start/stop/pause) tolerating
+// cross-queue use, which is the standard pattern Apple's interruption-
+// handling docs recommend. interruptionObserver genuinely IS single-writer:
+// it is only ever set once, inside installInterruptionHandlerOnce, guarded
+// by the `== nil` check. renderState is touched only from inside the
+// AVAudioSourceNode render closure itself (the real-time audio thread),
+// never concurrently from elsewhere. None of this is visible to the Swift 6
+// strict-concurrency checker since these are globals, so the annotation
+// documents/asserts the safety argument above.
 private nonisolated(unsafe) let engine = AVAudioEngine()
 private nonisolated(unsafe) var sourceNode: AVAudioSourceNode?
 private let targetFreq  = OSAllocatedUnfairLock<Double>(initialState: 440.0)
@@ -114,6 +120,10 @@ private func installInterruptionHandlerOnce() {
 
 @c public func psynth_stop() -> Int32 {
   engine.stop()
+  // Note: sourceNode is left non-nil, so a later psynth_start() hits the
+  // `sourceNode == nil` guard and returns early without restarting the
+  // engine. Unreachable today (app.rb never calls Synth#stop) but a future
+  // stop->start cycle would need `sourceNode = nil` here to actually work.
   return 1
 }
 
