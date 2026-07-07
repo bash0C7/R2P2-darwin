@@ -390,6 +390,84 @@ namespace :ios do
     end
   end
 
+  namespace :tiltsynth do
+    TILTSYNTH_DIR     = File.join(ROOT, "examples", "ios", "tilt-synth")
+    TILTSYNTH_PROJ    = File.join(TILTSYNTH_DIR, "TiltSynth.xcodeproj")
+    TILTSYNTH_BUNDLE  = "com.bash0c7.picoruby.TiltSynth"
+    TILTSYNTH_VENDOR  = File.join(TILTSYNTH_DIR, "Vendor")
+    TILTSYNTH_DERIVED = File.join(ROOT, "build", "ios-tiltsynth-app")
+    TILTSYNTH_DEVICE_DERIVED = File.join(ROOT, "build", "ios-tiltsynth-app-device")
+
+    desc "Cross-build libmruby.a (Simulator) WITH the tilt-synth gems and stage under examples/ios/tilt-synth/Vendor"
+    task lib: :setup do
+      stage_libmruby("r2p2-picoruby-ios-tiltsynth-sim.rb", "ios-tiltsynth-sim", TILTSYNTH_VENDOR)
+    end
+
+    desc "Generate the TiltSynth Xcode project from project.yml"
+    task :gen do
+      sh "cd #{TILTSYNTH_DIR.shellescape} && xcodegen generate"
+    end
+
+    desc "Build the TiltSynth app for the iOS Simulator"
+    task :build do
+      sh "xcodebuild -project #{TILTSYNTH_PROJ.shellescape} " \
+         "-scheme TiltSynth -destination 'generic/platform=iOS Simulator' " \
+         "-derivedDataPath #{TILTSYNTH_DERIVED.shellescape} " \
+         "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS=x86_64 build"
+    end
+
+    desc "Boot a simulator, install, and launch the TiltSynth app"
+    task :run do
+      app = Dir.glob(File.join(TILTSYNTH_DERIVED, "Build", "Products",
+                               "*-iphonesimulator", "TiltSynth.app")).first
+      raise "app not built; run `rake ios:tiltsynth:build`" unless app
+      udid = `xcrun simctl list devices available`.lines
+             .grep(/iPhone/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
+      raise "no available iPhone simulator" unless udid
+      sh "xcrun simctl boot #{udid} 2>/dev/null; true"
+      sh "open -a Simulator"
+      sh "xcrun simctl install #{udid} #{app.shellescape}"
+      sh "xcrun simctl launch #{udid} #{TILTSYNTH_BUNDLE}"
+    end
+
+    desc "Full TiltSynth Simulator pipeline: lib -> gen -> build -> run"
+    task all: [:lib, :gen, :build, :run]
+
+    namespace :device do
+      desc "Cross-build libmruby.a (iphoneos arm64) WITH the tilt-synth gems and stage under examples/ios/tilt-synth/Vendor"
+      task lib: :setup do
+        stage_libmruby("r2p2-picoruby-ios-tiltsynth-device.rb", "ios-tiltsynth-device", TILTSYNTH_VENDOR)
+      end
+
+      desc "Build the TiltSynth app, signed, for the connected iOS device"
+      task :build do
+        dest = `xcodebuild -project #{TILTSYNTH_PROJ.shellescape} -scheme TiltSynth -showdestinations 2>/dev/null`.lines
+               .grep(/platform:iOS,/).reject { |l| l =~ /Simulator|placeholder/ }
+               .first&.match(/id:(\S+)/)&.captures&.first
+        raise "no connected iOS device destination (xcodebuild -showdestinations)" unless dest
+        sh "xcodebuild -project #{TILTSYNTH_PROJ.shellescape} -scheme TiltSynth " \
+           "-destination 'id=#{dest}' " \
+           "-derivedDataPath #{TILTSYNTH_DEVICE_DERIVED.shellescape} " \
+           "ARCHS=arm64 -allowProvisioningUpdates build"
+      end
+
+      desc "Install and launch the TiltSynth app on the connected iOS device"
+      task :run do
+        app = Dir.glob(File.join(TILTSYNTH_DEVICE_DERIVED, "Build", "Products",
+                                 "*-iphoneos", "TiltSynth.app")).first
+        raise "app not built; run `rake ios:tiltsynth:device:build`" unless app
+        dev = `xcrun devicectl list devices`.lines
+              .grep(/iPhone|iPad/).first&.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
+        raise "no connected iOS device (xcrun devicectl list devices)" unless dev
+        sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
+        sh "xcrun devicectl device process launch --console --device #{dev} #{TILTSYNTH_BUNDLE}"
+      end
+
+      desc "Full TiltSynth device pipeline: lib -> gen -> build -> run (needs a connected, signed device)"
+      task all: [:lib, "ios:tiltsynth:gen", :build, :run]
+    end
+  end
+
   namespace :net do
     NET_DIR     = File.join(ROOT, "examples", "ios", "networking")
     NET_PROJ    = File.join(NET_DIR, "Networking.xcodeproj")
