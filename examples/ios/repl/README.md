@@ -1,13 +1,15 @@
 # repl — evaluate Ruby on the device
 
+日本語版: [README_jp.md](README_jp.md)
+
 A SwiftUI app (`PicoRubyRunner`) with a text editor, a Run button, and an output
-view. It compiles and runs whatever Ruby you type, on the device, and shows the
+view. It compiles and runs the Ruby you type, on the device, and shows the
 captured output.
 
 ## Where PicoRuby runs
 
-There is no bundled `.rb` in this example — **the Ruby is what you type at
-runtime**. The cross-built `libmruby.a` carries the prism compiler inside the VM,
+There is no bundled `.rb` in this example — the Ruby is what you type at
+runtime. The cross-built `libmruby.a` carries the prism compiler inside the VM,
 so the source is compiled and run on the device itself, not ahead of time.
 
 Each Run goes through one bridge call:
@@ -22,37 +24,46 @@ ContentView (TextEditor + Run)
   String shown in the output view
 ```
 
-`repl_eval(const char *src)` (see `../../../bridge/picoruby_bridge.h`) opens a fresh
-VM, compiles and runs `src`, and returns the captured stdout+stderr as a string.
-A new VM per Run means each evaluation starts clean. `ContentView.run()` calls it
-on a background thread and frees the returned string.
+- `repl_eval(const char *src)` (`../../../bridge/picoruby_bridge.h`) opens a
+  fresh VM, compiles and runs `src`, and returns the captured stdout+stderr —
+  compile diagnostics and uncaught-exception backtraces included — as a
+  malloc'd string the caller must free.
+- A new VM per Run means each evaluation starts clean.
+- `ContentView.run()` calls it on a background thread and frees the returned
+  string; a NULL return (allocation/setup failure) is shown as
+  `(VM failed to start)`.
 
 ## Files
 
-| File | Role |
-|---|---|
-| `Sources/App.swift` | the `@main` app entry; one `WindowGroup` |
-| `Sources/ContentView.swift` | editor + Run + output; calls `repl_eval` |
-| `Sources/PicoRubyRunner-Bridging-Header.h` | exposes the C bridge to Swift |
-| `project.yml` | xcodegen project (links `-lmruby`, the staged `libmruby.a`) |
+The Ruby VM, the bridge, and the build configs live at the repo root
+(`../../../bridge`, `../../../build_config`); this directory is only the app.
 
-The Ruby VM, the bridge, and the build configs live at the repo root (`../../../bridge`,
-`../../../build_config`); this directory is only the app.
+- `Sources/App.swift` — the `@main` app entry; one `WindowGroup`.
+- `Sources/ContentView.swift` — editor + Run + output; calls `repl_eval`.
+- `Sources/PicoRubyRunner-Bridging-Header.h` — exposes the C bridge to Swift.
+- `project.yml` — xcodegen project; compiles the bridge sources and links
+  `-lmruby` (the staged `libmruby.a` under `Vendor/lib`).
 
 ## Run it
 
+The app runs on the iOS Simulator and on a connected device.
+
 ```
 rake ios                  # Simulator: lib -> gen -> build -> run (headless)
-rake ios:device:all       # connected device: build, sign, install, launch
+rake ios:device:all       # connected, signed device: lib -> gen -> build -> run
 ```
 
 `EXAMPLE` defaults to `repl`, so the base `ios:*` tasks build this app.
 
 ## What you can type
 
-The VM uses a reduced gem set (no `core`/`stdlib`, no POSIX), so the Ruby surface
-is smaller than full mruby/CRuby: integer/float math, `String`, interpolation,
-`print`/`p`, `raise`. `puts` is not in the reduced VM, so the bridge installs a
-small `puts` shim defined in terms of core `print`. File IO, networking, and the
-rest of stdlib are absent. See the repository README's "Constraints worth
-knowing" for the full picture.
+The VM is built by `build_config/r2p2-picoruby-ios-repl-{sim,device}.rb` with
+the full-REPL gem set, so the full `core`/`stdlib` Ruby surface is available.
+
+- Gemboxes: `mruby-posix` + `core` + `stdlib` + `shell`, with Darwin ports
+  preferred over their POSIX siblings (`conf.ports :darwin, :posix`).
+- Networking gems and OpenSSL are excluded from this build config.
+- The bridge prepends a one-line `puts` shim (defined via core `print`) to
+  every eval; it is one physical line, so line numbers in diagnostics shift by
+  exactly 1 relative to what you typed.
+- See the repository README's "Constraints worth knowing" for the full picture.
