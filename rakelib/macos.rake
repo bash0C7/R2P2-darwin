@@ -115,7 +115,8 @@ namespace :macos do
 
       static uint8_t vm_heap[HEAP_SIZE] __attribute__((aligned(16)));
 
-      mrb_state *global_mrb = NULL;
+      /* Defined in mruby-compiler (ccontext.c). */
+      extern mrb_state *global_mrb;
 
       int main(int argc, char **argv) {
         (void)argc;

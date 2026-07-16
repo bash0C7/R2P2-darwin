@@ -19,7 +19,9 @@
 #define HEAP_SIZE (1024 * 8000)
 #endif
 
-mrb_state *global_mrb = NULL;
+/* Defined in mruby-compiler (ccontext.c); the prism xallocator routes its
+ * allocations through it, so keep it pointed at the live VM. */
+extern mrb_state *global_mrb;
 
 typedef struct { mrb_state *mrb; uint8_t *heap; } vm_handle;
 
@@ -36,16 +38,21 @@ static void print_diagnostics(mrc_ccontext *cc) {
   }
 }
 
-/* Run a compiled irep as a task and surface any exception, mirroring
- * repl_eval's task-scheduler handling. */
+/* Run a compiled irep as a task and surface any uncaught exception as a
+ * printed backtrace on stderr instead of crashing. */
 static void run_irep(mrb_state *mrb, mrc_ccontext *cc, mrc_irep *irep) {
   mrb_value name = mrb_str_new_cstr(mrb, "main");
   mrb_value task = mrc_create_task(cc, irep, name, mrb_nil_value(),
                                    mrb_obj_value(mrb->top_self));
   if (mrb_nil_p(task)) { fprintf(stderr, "mrc_create_task failed\n"); return; }
+  /* Protect the task object from GC while the scheduler runs so the result
+   * can be retrieved afterwards. */
   int ai = mrb_gc_arena_save(mrb);
   mrb_gc_protect(mrb, task);
   mrb_task_run(mrb);
+  /* The task scheduler captures exceptions as the task result rather than
+   * setting mrb->exc. Use mrb_exception_p (type check only, no alloc) to
+   * avoid crashing inside mrb_obj_is_kind_of. */
   mrb_value result = mrb_task_value(mrb, task);
   if (mrb_exception_p(result)) {
     mrb->exc = mrb_obj_ptr(result);
@@ -68,6 +75,12 @@ char *repl_eval(const char *src) {
   if (cap == NULL) { free(combined); return NULL; }
   fflush(stdout); fflush(stderr);
   int saved_out = dup(1), saved_err = dup(2);
+  if (saved_out < 0 || saved_err < 0) {
+    if (saved_out >= 0) close(saved_out);
+    if (saved_err >= 0) close(saved_err);
+    fclose(cap); free(combined);
+    return NULL;
+  }
   dup2(fileno(cap), 1);
   dup2(fileno(cap), 2);
 
@@ -91,29 +104,7 @@ char *repl_eval(const char *src) {
     if (irep == NULL) {
       print_diagnostics(cc);
     } else {
-      mrb_value name = mrb_str_new_cstr(mrb, "main");
-      mrb_value task = mrc_create_task(cc, irep, name,
-                                       mrb_nil_value(),
-                                       mrb_obj_value(mrb->top_self));
-      if (!mrb_nil_p(task)) {
-        /* Protect the task object from GC while the scheduler runs so we can
-         * retrieve the result afterwards. */
-        int ai = mrb_gc_arena_save(mrb);
-        mrb_gc_protect(mrb, task);
-        mrb_task_run(mrb);
-        /* The task scheduler captures exceptions as the task result rather
-         * than setting mrb->exc. Use mrb_exception_p (type check only, no
-         * alloc) to avoid crashing inside mrb_obj_is_kind_of. */
-        mrb_value result = mrb_task_value(mrb, task);
-        if (mrb_exception_p(result)) {
-          mrb->exc = mrb_obj_ptr(result);
-          mrb_print_error(mrb);
-          mrb->exc = NULL;
-        }
-        mrb_gc_arena_restore(mrb, ai);
-      } else {
-        fprintf(stderr, "mrc_create_task failed\n");
-      }
+      run_irep(mrb, cc, irep);
     }
     mrc_ccontext_free(cc);
     mrb_close(mrb);
