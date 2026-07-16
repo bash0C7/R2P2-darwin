@@ -120,9 +120,9 @@ end
 # firmware's command channel.
 NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
-# The discovered service/characteristic :uuid128 fields are 16 raw bytes.
-# bind_rx renders them to hex and matches against these dash-stripped constants
-# (avoids calling BLE::Utils.uuid).
+# The discovered service/characteristic :uuid128 fields are 16 big-endian bytes
+# (textual UUID order). bind_rx renders them to hex and matches against these
+# dash-stripped constants (avoids calling BLE::Utils.uuid).
 NUS_SERVICE_UUID128_HEX = "6e400001b5a3f393e0a9e50e24dcca9e"
 NUS_RX_CHAR_UUID128_HEX = "6e400002b5a3f393e0a9e50e24dcca9e"
 HEX_DIGITS = "0123456789abcdef"
