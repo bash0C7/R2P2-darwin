@@ -66,7 +66,7 @@ ruby examples/ios/tilt-synth/test_mapping.rb
 - Stubs `Motion`/`Synth` (normally provided by the gems) and asserts the
   quantize/clamp math, mirroring `examples/ios/stackchan/test_frames.rb`.
 
-## Build and run
+## Build & run
 
 Prerequisites: full `Xcode.app`, iOS SDK, `xcodegen` (verify with `rake check`).
 
@@ -85,6 +85,10 @@ rake ios:tiltsynth:all     # cross-build libmruby.a -> xcodegen -> build -> laun
   as `iphone-torch`'s Simulator target, which has no torch.
 
 ### Device (actual tilt + sound)
+
+On first use, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in `project.yml` with
+your own Team ID; see [On-device builds](../../../README.md#on-device-builds)
+for details.
 
 ```sh
 rake ios:tiltsynth:device:all   # needs a connected, signed iOS device
@@ -109,7 +113,7 @@ Each stage of the pipeline is also a standalone task.
 - `rake ios:tiltsynth:device:build` — build signed for a connected device
 - `rake ios:tiltsynth:device:run` — install + launch on the connected device
 
-## Scope (YAGNI)
+## Known constraints
 
 The PoC deliberately leaves these out of scope:
 

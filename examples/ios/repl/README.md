@@ -6,7 +6,7 @@ A SwiftUI app (`PicoRubyRunner`) with a text editor, a Run button, and an output
 view. It compiles and runs the Ruby you type, on the device, and shows the
 captured output.
 
-## Where PicoRuby runs
+## How it works
 
 There is no bundled `.rb` in this example — the Ruby is what you type at
 runtime. The cross-built `libmruby.a` carries the prism compiler inside the VM,
@@ -44,18 +44,29 @@ The Ruby VM, the bridge, and the build configs live at the repo root
 - `project.yml` — xcodegen project; compiles the bridge sources and links
   `-lmruby` (the staged `libmruby.a` under `Vendor/lib`).
 
-## Run it
+## Build & run
 
 The app runs on the iOS Simulator and on a connected device.
 
+The bare `ios:*` tasks are aliases of `ios:repl:*`, so `rake ios` builds this app.
+
+### Simulator
+
 ```
 rake ios                  # Simulator: lib -> gen -> build -> run (headless)
+```
+
+### Device
+
+Before the first on-device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in
+`project.yml` with your own Team ID — see [On-device builds](../../../README.md#on-device-builds)
+for details.
+
+```
 rake ios:device:all       # connected, signed device: lib -> gen -> build -> run
 ```
 
-`EXAMPLE` defaults to `repl`, so the base `ios:*` tasks build this app.
-
-## What you can type
+## Known constraints
 
 The VM is built by `build_config/r2p2-picoruby-ios-repl-{sim,device}.rb` with
 the full-REPL gem set, so the full `core`/`stdlib` Ruby surface is available.

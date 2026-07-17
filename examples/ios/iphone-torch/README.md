@@ -31,8 +31,6 @@ prints (captured stdout), which the UI appends to its log.
 There is no poll timer (unlike virtual-peripheral): the torch is a
 fire-and-forget on/off, so one `vm_call` per press is all.
 
-## The behaviour is Ruby
-
 `app.rb` is not baked into the binary as bytecode. It ships as a plain-text
 resource and is compiled at runtime, inside the app, by PicoRuby's prism
 compiler when the VM boots (`VMExecutor.start` -> `vm_open(bootSource)`).
@@ -84,7 +82,7 @@ example.
 Controlling the torch via `AVCaptureDevice.lockForConfiguration` starts no
 capture session, so the app needs no camera permission and no privacy keys.
 
-## Build and run
+## Build & run
 
 Prerequisites: full `Xcode.app`, iOS SDK, `xcodegen` (`rake check`).
 
@@ -99,6 +97,10 @@ The Simulator has no torch. The app launches and the VM boots, but ON logs
 target verifies that the build links and the VM runs.
 
 ### Device (actual torch)
+
+Before the first device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in
+`project.yml` with your own Team ID — see
+[On-device builds](../../../README.md#on-device-builds) for details.
 
 ```sh
 rake ios:torch:device:all   # needs a connected, signed iOS device

@@ -36,8 +36,6 @@ below the bridge is Ruby or picoruby-net C.
 `devicectl ... process launch --console` (NSLog-mirrored) without a manual tap.
 The FETCH button re-runs it interactively.
 
-## The behaviour is Ruby
-
 `app.rb` ships as a plain-text resource and is compiled at runtime, inside the
 app, by PicoRuby's prism compiler when the VM boots.
 
@@ -50,7 +48,7 @@ app, by PicoRuby's prism compiler when the VM boots.
   validate the server certificate. This example demonstrates connectivity plus
   handshake, not a trust decision.
 
-## Depends on a fork fix
+## Dependencies
 
 This example only works against a `vendor/picoruby` that carries the
 `picoruby-net` POSIX recv-buffer allocator fix, which the default fetch
@@ -65,13 +63,18 @@ completes (it looks like a hang, since captured stdout only flushes on return).
 Prerequisites: full `Xcode.app`, iOS SDK, `xcodegen` (`rake check` verifies
 them).
 
-Simulator:
+### Simulator
 
 ```sh
 rake ios:net:all      # cross-build libmruby.a -> xcodegen -> build -> launch
 ```
 
-Device (real TLS handshake; needs a connected, signed iOS device):
+### Device
+
+Real TLS handshake; needs a connected, signed iOS device. On the first
+on-device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in `project.yml`
+with your own Team ID — see
+[On-device builds](../../../README.md#on-device-builds) in the root README.
 
 ```sh
 rake ios:net:device:all
