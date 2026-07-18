@@ -73,6 +73,7 @@ mkdir -p /tmp/innocence
 cd /Users/bash/dev/src/github.com/bash0C7/R2P2-darwin
 clang -g -O0 -o /tmp/innocence/harness \
   bridge/picoruby_bridge.c /tmp/innocence/main.c \
+  -I build/host/include \
   -I bridge \
   -I vendor/picoruby/include \
   -I vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include \
