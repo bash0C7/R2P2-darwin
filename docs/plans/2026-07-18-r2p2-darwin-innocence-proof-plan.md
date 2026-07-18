@@ -24,6 +24,12 @@ D で「vendor のみ最小パッチ + 無変更 HEAD」の反実仮想テスト
 - iOS 100% 再現手順: `rake ios:lib ios:gen ios:build` で作った app を Simulator で起動
   するだけ（`.onAppear` が `repl_eval("puts \"hello #{1 + 2}\"")` 相当を実行して crash）
 
+**全 task 共通の完了基準（user 指定）:** 各 step の完了は iOS Simulator 上での実行で、
+non-crash かつ想定どおりの動作を、**動作とログの両方**（実行出力・プロセス生存・
+`~/Library/Logs/DiagnosticReports/` の crash report 有無）で確認して成立する。
+host 実験は切り分け情報であり step 完了の根拠にしない。ベースライン等「crash が
+期待される」診断 step は、期待観測が動作とログの両方で確認できたことが完了条件。
+
 **全 task 共通の制約:**
 - `vendor/picoruby` への commit 禁止。変更は working tree のみ、終了時に復元。
 - rake 実行時は `export RBENV_VERSION=4.0.5`（/tmp で作業する場合の rbenv フォールバック事故防止）。
