@@ -1,9 +1,12 @@
 # Deterministic `EXC_BAD_ACCESS` in `est_free`/`remove_free_block` during `mrb_close` teardown (custom-alloc VM, iOS Simulator arm64)
 
-> **Draft — not yet posted.** Destination is either `picoruby/picoruby` or `picoruby/estalloc`
-> (see "Victim vs culprit — open question" below; posting requires the maintainer's context).
-> Report authored from R2P2-darwin (an Apple-platform build harness for PicoRuby); it does not
-> modify picoruby/estalloc.
+> **R2P2-darwin deep-dive tracking issue** — filed as [bash0C7/R2P2-darwin#9](https://github.com/bash0C7/R2P2-darwin/issues/9).
+> This is filed on the `bash0C7/R2P2-darwin` repo to
+> carry the investigation forward — reading it should be enough to resume the detailed root-cause
+> work in a fresh session. **Upstream (picoruby/picoruby, picoruby/estalloc) is intentionally NOT
+> contacted**; R2P2-darwin does not modify the vendored picoruby/estalloc. The deterministic
+> reproduction and the exact next step (a hardware watchpoint to settle victim-vs-culprit) are
+> below under "How to continue" and "What would definitively resolve this".
 
 ## Summary
 
@@ -117,8 +120,37 @@ free-block teardown. This mirrors picoruby's own `cleanup()`. It avoids the cras
 `mrb_close`'s other teardown; it is acceptable here because the VM's memory is entirely within the
 estalloc pool.
 
+## How to continue (fresh session)
+
+Everything needed to resume is scripted in this repo; no ad-hoc build steps.
+
+1. Reproduce the crash deterministically:
+   - `bridge/picoruby_bridge.c` on `main`/the merged branch ships the workaround (both success-path
+     `mrb_close` calls commented out). To get the crashing binary, un-comment `mrb_close(mrb)` in
+     `repl_eval` (and `mrb_close(h->mrb)` in `vm_close`). Branch `debug/crash-baseline` already has
+     this state.
+   - Clean-rebuild and observe on the frozen Simulator:
+     ```
+     rm -rf build/ios-repl-sim
+     RBENV_VERSION=4.0.5 rake ios:repl:lib ios:repl:gen ios:repl:build
+     SIM_UDID=<frozen-iPhone-udid> RBENV_VERSION=4.0.5 rake ios:repl:observe   # expect {crash=>5}
+     ```
+   - `rm -rf build/ios-repl-sim` is mandatory before any build-option change: picoruby's per-object
+     rule keys on `.c` mtime, not on `build_config`, so a stale `.o` silently makes an experiment a
+     no-op. Freeze one Simulator (never re-create/reset it) — its container state is a controlled
+     variable. See `docs/plans/2026-07-18-estalloc-sweep-log.md` for the pinned env.
+2. Settle victim-vs-culprit with a hardware watchpoint (the one unfinished step):
+   - Attach lldb to the Simulator app; break at `est_free`/`remove_free_block` when it faults;
+     inspect the faulting `FREE_BLOCK` and the value `0x22` came from.
+   - Set watchpoints on the crash target's `size`/footer address and the `prev_free` slot (0x10),
+     re-run, and record the frame that writes the bad value — an estalloc function operating on
+     stale metadata (victim) vs. an mruby write outside its allocation (culprit).
+3. Fix on the attributed side (footer validation in estalloc coalescing, or the mruby-side OOB
+   write). Then remove the workaround and confirm `rake ios:repl:observe` → `{ok=>5}` with real
+   `mrb_close` teardown.
+
 ## What would definitively resolve this
 
-The deterministic reproduction now exists, so the remaining step is the watchpoint observation
-described under "Victim vs culprit" to attribute the corrupting/mis-read write, then fix on the
-correct side (add footer validation in estalloc's coalescing path, or fix the mruby-side write).
+The deterministic reproduction now exists, so the remaining step is the watchpoint observation in
+"How to continue" step 2 to attribute the corrupting/mis-read write, then fix on the correct side
+(add footer validation in estalloc's coalescing path, or fix the mruby-side write).
