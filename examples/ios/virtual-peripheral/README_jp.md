@@ -4,7 +4,7 @@ English: [README.md](README.md)
 
 PicoRuby 主導の仮想 BLE ペリフェラルです。BLE セントラルをデバッグするためのテストスタブとして使えます。`PBLE-TEST` という名前で Heart Rate GATT サービスを advertise し、read への応答・write の処理・notification の送出まで、その振る舞いのすべてを `app.rb` が決めます。Apple の CoreBluetooth framework は picoruby-ble の Darwin port 越しに駆動され、アプリ側に Swift の CoreBluetooth コードはありません。
 
-## PicoRuby が担う範囲
+## 仕組み
 
 GATT サーバとしての振る舞いはすべて `app.rb` にあります。`BLE` のサブクラスです。
 
@@ -45,14 +45,12 @@ class VirtualPeripheral < BLE
 
 `build_profile` / `build_adv` は `BLE::GattDatabase` / `BLE::AdvertisingData` の処理 (add_service / add_characteristic / add_descriptor、ハンドル割り当て、長さプレフィックス) をなぞるので、生成されるバイト列は rp2040 でコンパイルされるものと同一です。オフラインの生成手順も追加の gem も不要で、ボード上と同じようにデバイス上の Ruby が profile を組み立てます。
 
-## 依存関係
+## 公開する profile の変更
 
-この example には picoruby-ble の CoreBluetooth Darwin port が必要です。port は `bash0C7/picoruby` fork の `port-darwin` branch にあります。この branch は upstream master に、picoruby-ble の `ports/darwin/` (CoreBluetooth 上の BLE peripheral / central port) と、C port が呼び出しアプリがリンクする `PicoBLEDarwin` Swift package (`ports/darwin/ext`) を加えた完全な picoruby ツリーです。
+サービス・キャラクタリスティック・advertise 名を変えるには、`app.rb` の `build_profile` / `build_adv` と `HR_*` ハンドル定数を直接編集します。
 
-- この fork と branch が repo の default `PICORUBY_REPO` / `PICORUBY_REF` です。通常の checkout で `rake setup` を実行すれば `vendor/picoruby` に fetch されるので、追加で clone するものはありません。
-- build config と `project.yml` は picoruby-ble を `vendor/picoruby` から読みます。
-- upstream master に Darwin BLE port はありません。別のツリーを fetch する場合は env で上書きします: `PICORUBY_REPO=https://github.com/picoruby/picoruby.git PICORUBY_REF=master rake setup`
-- picoruby-ble gem を別の場所に置いている場合は、`PICORUBY_BLE_GEMDIR` で gem ディレクトリだけを上書きできます。
+- ハンドルは組み立て順に割り当てられます: service=1、0x2A37 decl=2、value=3、CCCD=4、0x2A39 decl=5、value=6。
+- ハンドルは 255 以下に保ってください。Darwin port のイベントレイアウトはハンドルを 1 バイトで読みます。
 
 ## ファイル構成
 
@@ -66,22 +64,39 @@ VM bridge と build config は repo root (`../../../bridge`、`../../../build_co
 - `tools/ble_write.swift` — `PBLE-TEST` をスキャンして接続し、read・subscribe・write を行う macOS の BLE セントラル。
 - `project.yml` — xcodegen プロジェクト。`PicoBLEDarwin` を link + embed し、Bluetooth の usage string を宣言します。
 
-## 実行方法
+## 依存
+
+この example には picoruby-ble の CoreBluetooth Darwin port が必要です。port は `bash0C7/picoruby` fork の `port-darwin` branch にあります。この branch は upstream master に、picoruby-ble の `ports/darwin/` (CoreBluetooth 上の BLE peripheral / central port) と、C port が呼び出しアプリがリンクする `PicoBLEDarwin` Swift package (`ports/darwin/ext`) を加えた完全な picoruby ツリーです。
+
+- この fork と branch が repo の default `PICORUBY_REPO` / `PICORUBY_REF` です。通常の checkout で `rake setup` を実行すれば `vendor/picoruby` に fetch されるので、追加で clone するものはありません。
+- build config と `project.yml` は picoruby-ble を `vendor/picoruby` から読みます。
+- upstream master に Darwin BLE port はありません。別のツリーを fetch する場合は env で上書きします: `PICORUBY_REPO=https://github.com/picoruby/picoruby.git PICORUBY_REF=master rake setup`
+- picoruby-ble gem を別の場所に置いている場合は、`PICORUBY_BLE_GEMDIR` で gem ディレクトリだけを上書きできます。
+
+## ビルドと実行
 
 Simulator と接続した実機の両方で動かせます。3 つ目の task は macOS 側のセントラルヘルパーを実行します。
 
+### Simulator
+
 ```sh
 rake ios:vperiph:all          # Simulator パイプライン: lib -> gen -> build -> run
-rake ios:vperiph:device:all   # 接続した実機: build、署名、install、launch
-rake ios:vperiph:write        # ペリフェラルを叩く macOS BLE セントラルヘルパー
 ```
 
 - Simulator でも VM は起動して `app.rb` は動きますが、Simulator の CoreBluetooth は `poweredOn` に到達しないため、advertise を含む無線の挙動には実機が必要です。
-- `rake ios:vperiph:write` は `tools/ble_write.swift` をビルドして実行します。`WRITE_HEX`・`TARGET_NAME`・`APP_SERVICES` は環境変数で渡せます。たとえば `WRITE_HEX=01 rake ios:vperiph:write` は Heart Rate Control Point に `0x01` を書き込み、`app.rb` がそのバイト列をログに出して模擬心拍数をリセットします。
 
-## 公開する profile の変更
+### 実機
 
-サービス・キャラクタリスティック・advertise 名を変えるには、`app.rb` の `build_profile` / `build_adv` と `HR_*` ハンドル定数を直接編集します。
+初回の実機ビルドの前に、`project.yml` の `DEVELOPMENT_TEAM: YOUR_TEAM_ID` を自分の Apple Team ID に置き換えてください。詳細は [実機ビルド](../../../README_jp.md#実機ビルド) を参照してください。
 
-- ハンドルは組み立て順に割り当てられます: service=1、0x2A37 decl=2、value=3、CCCD=4、0x2A39 decl=5、value=6。
-- ハンドルは 255 以下に保ってください。Darwin port のイベントレイアウトはハンドルを 1 バイトで読みます。
+```sh
+rake ios:vperiph:device:all   # 接続した実機: build、署名、install、launch
+```
+
+`rake ios:vperiph:write` は `tools/ble_write.swift` をビルドして実行する、ペリフェラルを叩く macOS BLE セントラルヘルパーです。
+
+```sh
+rake ios:vperiph:write        # ペリフェラルを叩く macOS BLE セントラルヘルパー
+```
+
+`WRITE_HEX`・`TARGET_NAME`・`APP_SERVICES` は環境変数で渡せます。たとえば `WRITE_HEX=01 rake ios:vperiph:write` は Heart Rate Control Point に `0x01` を書き込み、`app.rb` がそのバイト列をログに出して模擬心拍数をリセットします。

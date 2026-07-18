@@ -4,7 +4,7 @@
 
 A PicoRuby-first virtual BLE peripheral, useful as a test stub for debugging a BLE central. It advertises a Heart Rate GATT service named `PBLE-TEST`, answers reads, handles writes, and streams notifications — and every one of those behaviours is decided in `app.rb`. Apple's CoreBluetooth framework is driven through picoruby-ble's Darwin port; the app contains no Swift CoreBluetooth code.
 
-## Where PicoRuby runs
+## How it works
 
 The whole GATT-server behaviour lives in `app.rb`, a `BLE` subclass:
 
@@ -45,14 +45,12 @@ PicoRuby's `String`/`Array` here do not carry `Array#pack` / `String#<<` / `Inte
 
 `build_profile` / `build_adv` mirror what `BLE::GattDatabase` / `BLE::AdvertisingData` do (add_service / add_characteristic / add_descriptor, handle assignment, length prefixes), so the bytes are identical to what rp2040 compiles. No offline step, no extra gem — the profile is built in Ruby on the device, as on a board.
 
-## Dependencies
+## Changing the published profile
 
-This example needs the picoruby-ble CoreBluetooth Darwin port, which lives in the `bash0C7/picoruby` fork on branch `port-darwin`. That branch is a complete picoruby tree — upstream master plus picoruby-ble's `ports/darwin/` (the BLE peripheral/central port over CoreBluetooth) and the `PicoBLEDarwin` Swift package (`ports/darwin/ext`) that the C port calls and the app links.
+Edit `build_profile` / `build_adv` in `app.rb` directly (services, characteristics, advertised name) and the `HR_*` handle constants.
 
-- The fork and branch are the repo's default `PICORUBY_REPO` / `PICORUBY_REF`; `rake setup` fetches them into `vendor/picoruby`, so a normal checkout is enough — nothing extra to clone.
-- The build config and `project.yml` read picoruby-ble from `vendor/picoruby`.
-- Upstream master carries no Darwin BLE port. To fetch a different tree, override the env: `PICORUBY_REPO=https://github.com/picoruby/picoruby.git PICORUBY_REF=master rake setup`
-- `PICORUBY_BLE_GEMDIR` overrides just the picoruby-ble gem directory if you keep it elsewhere.
+- Handles are assigned in build order: service=1, 0x2A37 decl=2, value=3, CCCD=4, 0x2A39 decl=5, value=6.
+- Keep handles at most 255 — the Darwin port's event layout reads them as one byte.
 
 ## Files
 
@@ -66,22 +64,39 @@ The VM bridge and the build configs live at the repo root (`../../../bridge`, `.
 - `tools/ble_write.swift` — a macOS BLE central that scans `PBLE-TEST`, connects, reads, subscribes, and writes.
 - `project.yml` — xcodegen project; links and embeds `PicoBLEDarwin` and declares the Bluetooth usage string.
 
-## Run it
+## Dependencies
+
+This example needs the picoruby-ble CoreBluetooth Darwin port, which lives in the `bash0C7/picoruby` fork on branch `port-darwin`. That branch is a complete picoruby tree — upstream master plus picoruby-ble's `ports/darwin/` (the BLE peripheral/central port over CoreBluetooth) and the `PicoBLEDarwin` Swift package (`ports/darwin/ext`) that the C port calls and the app links.
+
+- The fork and branch are the repo's default `PICORUBY_REPO` / `PICORUBY_REF`; `rake setup` fetches them into `vendor/picoruby`, so a normal checkout is enough — nothing extra to clone.
+- The build config and `project.yml` read picoruby-ble from `vendor/picoruby`.
+- Upstream master carries no Darwin BLE port. To fetch a different tree, override the env: `PICORUBY_REPO=https://github.com/picoruby/picoruby.git PICORUBY_REF=master rake setup`
+- `PICORUBY_BLE_GEMDIR` overrides just the picoruby-ble gem directory if you keep it elsewhere.
+
+## Build & run
 
 The app runs on the Simulator and on a connected device; a third task runs the macOS central helper.
 
+### Simulator
+
 ```sh
 rake ios:vperiph:all          # Simulator pipeline: lib -> gen -> build -> run
-rake ios:vperiph:device:all   # connected device: build, sign, install, launch
-rake ios:vperiph:write        # macOS BLE central helper that drives the peripheral
 ```
 
 - The Simulator boots the VM and runs `app.rb`, but Simulator CoreBluetooth never reaches `poweredOn`; advertising and the radio behaviour require a real device.
-- `rake ios:vperiph:write` builds and runs `tools/ble_write.swift`. `WRITE_HEX`, `TARGET_NAME`, and `APP_SERVICES` pass through the environment: `WRITE_HEX=01 rake ios:vperiph:write` writes `0x01` to the Heart Rate Control Point, and `app.rb` logs the bytes and resets the simulated rate.
 
-## Changing the published profile
+### Device
 
-Edit `build_profile` / `build_adv` in `app.rb` directly (services, characteristics, advertised name) and the `HR_*` handle constants.
+Before the first device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in `project.yml` with your own Apple Team ID — see [On-device builds](../../../README.md#on-device-builds) for details.
 
-- Handles are assigned in build order: service=1, 0x2A37 decl=2, value=3, CCCD=4, 0x2A39 decl=5, value=6.
-- Keep handles at most 255 — the Darwin port's event layout reads them as one byte.
+```sh
+rake ios:vperiph:device:all   # connected device: build, sign, install, launch
+```
+
+`rake ios:vperiph:write` builds and runs `tools/ble_write.swift`, a macOS BLE central that drives the peripheral:
+
+```sh
+rake ios:vperiph:write        # macOS BLE central helper that drives the peripheral
+```
+
+`WRITE_HEX`, `TARGET_NAME`, and `APP_SERVICES` pass through the environment: `WRITE_HEX=01 rake ios:vperiph:write` writes `0x01` to the Heart Rate Control Point, and `app.rb` logs the bytes and resets the simulated rate.

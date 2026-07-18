@@ -14,3 +14,5 @@
 /tmp/
 # Claude Code local-only settings (permission grants etc.)
 /.claude/settings.local.json
+# macOS Finder metadata
+.DS_Store

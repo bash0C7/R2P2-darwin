@@ -12,8 +12,8 @@ only those APIs — does not apply: this app's TLS is PicoRuby's own, running
 on-device.
 
 This is the one example that needs the full-REPL gembox (`posix?=true` plus the
-`conf.ports :darwin, :posix` port chain — see "Constraints worth knowing" in the
-[root README](../../../README.md#constraints-worth-knowing)), not the reduced VM
+`conf.ports :darwin, :posix` port chain — see the gembox notes in
+[How it fits together](../../../README.md#how-it-fits-together)), not the reduced VM
 the other examples use: `picoruby-net`/`picoruby-mbedtls`/`picoruby-rng` all
 assume a POSIX-shaped `build.posix?` branch.
 
@@ -36,8 +36,6 @@ below the bridge is Ruby or picoruby-net C.
 `devicectl ... process launch --console` (NSLog-mirrored) without a manual tap.
 The FETCH button re-runs it interactively.
 
-## The behaviour is Ruby
-
 `app.rb` ships as a plain-text resource and is compiled at runtime, inside the
 app, by PicoRuby's prism compiler when the VM boots.
 
@@ -50,12 +48,12 @@ app, by PicoRuby's prism compiler when the VM boots.
   validate the server certificate. This example demonstrates connectivity plus
   handshake, not a trust decision.
 
-## Depends on a fork fix
+## Dependencies
 
 This example only works against a `vendor/picoruby` that carries the
 `picoruby-net` POSIX recv-buffer allocator fix, which the default fetch
 (`bash0C7/picoruby`, branch `port-darwin`) includes — see
-["Vendor fork: darwin ports and the picoruby-net POSIX fix"](../../../README.md#vendor-fork-darwin-ports-and-the-picoruby-net-posix-fix)
+[Vendor fork](../../../README.md#vendor-fork)
 in the root README. Without it, a response arriving over the custom `estalloc`
 VM allocator corrupts the free-list and crashes right after the handshake
 completes (it looks like a hang, since captured stdout only flushes on return).
@@ -65,13 +63,18 @@ completes (it looks like a hang, since captured stdout only flushes on return).
 Prerequisites: full `Xcode.app`, iOS SDK, `xcodegen` (`rake check` verifies
 them).
 
-Simulator:
+### Simulator
 
 ```sh
 rake ios:net:all      # cross-build libmruby.a -> xcodegen -> build -> launch
 ```
 
-Device (real TLS handshake; needs a connected, signed iOS device):
+### Device
+
+Real TLS handshake; needs a connected, signed iOS device. On the first
+on-device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in `project.yml`
+with your own Team ID — see
+[On-device builds](../../../README.md#on-device-builds) in the root README.
 
 ```sh
 rake ios:net:device:all

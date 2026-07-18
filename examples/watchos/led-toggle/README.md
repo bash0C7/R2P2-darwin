@@ -10,7 +10,7 @@ runs in a PicoRuby VM on the watch itself.
 This is a watchOS standalone app (`WKWatchOnly`), built for a physical Apple Watch
 (`arm64_32`) and the watchOS Simulator.
 
-## Where PicoRuby runs
+## How it works
 
 The LED state machine is `app.rb`, a plain Ruby object:
 
@@ -122,7 +122,7 @@ The VM, the C bridge (`../../../bridge`), and the build configs
 - `project.yml` — xcodegen project: `WKWatchOnly`, links `-lmruby`, mirrors the
   ABI defines
 
-## Run it
+## Build & run
 
 The app runs on the watchOS Simulator and on a physical Apple Watch.
 
@@ -132,7 +132,11 @@ The app runs on the watchOS Simulator and on a physical Apple Watch.
 rake watchos:led:all     # lib -> gen -> build -> boot a watch sim -> install -> launch
 ```
 
-### Physical Apple Watch (arm64_32)
+### Device
+
+Before the first device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in
+`project.yml` with your own Team ID — see
+[On-device builds](../../../README.md#on-device-builds) for details.
 
 ```sh
 rake watchos:led:device:all   # lib (+ arm64_32 recompile) -> gen -> build -> install -> launch
@@ -147,7 +151,6 @@ VM is live); tapping the screen flips the circle between red and blue.
 
 Device notes:
 
-- Set `DEVELOPMENT_TEAM` in `project.yml` to your own team.
 - The first launch of the bundle id needs a one-time on-device trust.
 - If the watch is locked, `:run` fails with
   `FBSOpenApplicationErrorDomain error 7 Locked` — unlock it and re-run.

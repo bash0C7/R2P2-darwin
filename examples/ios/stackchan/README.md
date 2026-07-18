@@ -8,7 +8,7 @@ A PicoRuby BLE central that connects to a
 over the Nordic UART Service (NUS). The entire BLE logic lives in `app.rb`;
 Swift only hosts the VM and forwards button taps.
 
-## What this demonstrates
+## How it works
 
 `app.rb` is bundled, fixed Ruby — not user-editable and not downloaded;
 PicoRuby is simply the implementation language for the app's own behavior
@@ -23,6 +23,30 @@ PicoRuby is simply the implementation language for the app's own behavior
 - A frame codec verifiable on host CRuby (`test_frames.rb`) with no BLE
   hardware.
 
+```
+ContentView.swift  (buttons)
+      │  vm_call(method, arg)
+      ▼
+VMExecutor.swift   (single VM thread)
+      │  C bridge
+      ▼
+app.rb  $app = Stackchan.new
+  Stackchan#connect   → RealBleLink#connect
+  Stackchan#face/led/head/torque → RealBleLink#write → BLE::write_value_of_characteristic_without_response
+      │
+      ▼
+picoruby-ble (Darwin port)  →  PicoBLEDarwin Swift package  →  CoreBluetooth
+```
+
+- `BLE_AVAILABLE` is probed at boot: on the device / Simulator (BLE linked)
+  it is true and `RealBleLink` drives the radio; under host CRuby
+  (`test_frames.rb`) it is false and the recording `BleLink` stub captures
+  frames for assertion.
+- `VMExecutor` owns the one serial VM thread and posts a periodic `tick`;
+  `Stackchan#tick` pumps BLE events while connected.
+- Frames written before the NUS RX handle is bound are queued and flushed
+  once `connect` succeeds.
+
 ## Hardware
 
 The example needs hardware at both ends of the BLE link:
@@ -30,29 +54,6 @@ The example needs hardware at both ends of the BLE link:
 - iPhone running iOS 17+ (any BLE-capable model).
 - Stack-chan robot flashed with the `stackchan-picoruby` firmware — it
   advertises as `StackChan-PicoRuby-<suffix>` and exposes NUS.
-
-## Quick start
-
-Device pipeline (needs a connected, signed iPhone):
-
-```
-# 1. Build BLE-enabled libmruby.a for the connected iPhone
-rake ios:stackchan:device:lib
-
-# 2. Generate and sign the Xcode project, then build
-rake ios:stackchan:gen
-rake ios:stackchan:device:build
-
-# 3. Install and launch (streams console output)
-rake ios:stackchan:device:run
-
-# Or all in one step:
-rake ios:stackchan:device:all
-```
-
-- First launch: iOS prompts for Bluetooth permission — allow it.
-- Simulator pipeline: `rake ios:stackchan:all` (lib -> gen -> build -> run).
-  No peripheral answers on the Simulator, so scan simply times out.
 
 ## Controls
 
@@ -82,32 +83,6 @@ ruby examples/ios/stackchan/test_frames.rb   # all PASS, no BLE hardware needed
   firmware wires them reversed, so "left" becomes `R` on the wire.
   `SIDE_TO_CHAR` matches the hardware and is load-bearing — do not "fix" it.
 
-## Architecture
-
-```
-ContentView.swift  (buttons)
-      │  vm_call(method, arg)
-      ▼
-VMExecutor.swift   (single VM thread)
-      │  C bridge
-      ▼
-app.rb  $app = Stackchan.new
-  Stackchan#connect   → RealBleLink#connect
-  Stackchan#face/led/head/torque → RealBleLink#write → BLE::write_value_of_characteristic_without_response
-      │
-      ▼
-picoruby-ble (Darwin port)  →  PicoBLEDarwin Swift package  →  CoreBluetooth
-```
-
-- `BLE_AVAILABLE` is probed at boot: on the device / Simulator (BLE linked)
-  it is true and `RealBleLink` drives the radio; under host CRuby
-  (`test_frames.rb`) it is false and the recording `BleLink` stub captures
-  frames for assertion.
-- `VMExecutor` owns the one serial VM thread and posts a periodic `tick`;
-  `Stackchan#tick` pumps BLE events while connected.
-- Frames written before the NUS RX handle is bound are queued and flushed
-  once `connect` succeeds.
-
 ## Build config
 
 `build_config/r2p2-picoruby-ios-stackchan-{device,sim}.rb` extends the base
@@ -124,6 +99,36 @@ VM with:
 The three stdlib gems are part of PicoRuby's `stdlib.gembox` (vm_mruby
 branch), which every rp2040 build includes. The base iOS config omits them to
 keep the REPL lean; this example adds them, example-scoped.
+
+## Build & run
+
+### Simulator
+
+`rake ios:stackchan:all` (lib -> gen -> build -> run). No peripheral answers
+on the Simulator, so scan simply times out.
+
+### Device
+
+Before the first on-device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in
+`project.yml` with your own Team ID — see
+[On-device builds](../../../README.md#on-device-builds) for details.
+
+```
+# 1. Build BLE-enabled libmruby.a for the connected iPhone
+rake ios:stackchan:device:lib
+
+# 2. Generate and sign the Xcode project, then build
+rake ios:stackchan:gen
+rake ios:stackchan:device:build
+
+# 3. Install and launch (streams console output)
+rake ios:stackchan:device:run
+
+# Or all in one step:
+rake ios:stackchan:device:all
+```
+
+First launch: iOS prompts for Bluetooth permission — allow it.
 
 ## Known constraints
 

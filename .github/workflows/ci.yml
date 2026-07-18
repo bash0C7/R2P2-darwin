@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      # PICORUBY_REF is a branch, so key the caches on the commit it points
+      # at right now — a cache hit means vendor/ and build/ already match it.
+      - name: Resolve picoruby ref
+        id: picoruby
+        run: echo "sha=$(git ls-remote https://github.com/bash0C7/picoruby.git port-darwin | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache vendor/picoruby
+        uses: actions/cache@v4
+        with:
+          path: vendor/picoruby
+          key: picoruby-${{ steps.picoruby.outputs.sha }}
+
+      - name: Cache build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/host
+            build/ios-repl-sim
+          key: build-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**') }}
+
+      - name: Bridge smoke test (host build)
+        run: rake smoke
+
+      # ios:build declares no dependency on ios:gen, so run the three
+      # pipeline steps explicitly in order. Device/signing tasks can't run
+      # on a runner and are exercised locally instead.
+      - name: iOS Simulator build (repl example)
+        run: rake ios:lib ios:gen ios:build

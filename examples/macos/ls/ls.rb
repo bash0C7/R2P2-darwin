@@ -1,4 +1,4 @@
-# ls-like listing of the current directory. Exercised by `rake single` as a
+# ls-like listing of the current directory. Exercised by `rake macos:single` as a
 # realistic coverage example over what the mruby-io / mruby-dir / core /
 # stdlib gemboxes give you: Dir.entries, File class methods, sprintf,
 # method definitions, while/if/case-like control flow, Array sort/reject,

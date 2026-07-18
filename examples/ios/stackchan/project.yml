@@ -63,4 +63,4 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.Stackchan
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: SM5792D355
+        DEVELOPMENT_TEAM: YOUR_TEAM_ID  # replace with your Apple Team ID (Xcode > Settings > Accounts) for device builds
