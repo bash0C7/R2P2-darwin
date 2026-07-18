@@ -1,0 +1,3 @@
+class Object
+  def bench_tick: (Integer, Integer) -> Integer
+end
