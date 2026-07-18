@@ -170,3 +170,39 @@ free-block 管理）側の欠陥である可能性が高い。次段は watchpoi
 ### build_config の最終状態
 実験終了後 `git checkout -- build_config/r2p2-picoruby-ios-repl-sim.rb` で baseline に復元。
 `git status` で差分なしを確認済み（このコミット時点で build_config は変更していない）。
+
+## Completion gate (Task 10) — WA restored
+
+`debug/crash-baseline` は Task 6/7/8 の調査用に `bridge/picoruby_bridge.c` の `mrb_close`
+（`repl_eval` L113 相当・`vm_close` L213 相当）を意図的に復活させていた（crash 再現用）。
+調査完了（真因は estalloc/mruby 内部 teardown、build-param/ABI mismatch は棄却済み、
+victim/culprit 未決着）を受け、WA（`mrb_close` を呼ばず `free(heap)`/`free(h->heap)` で
+estalloc pool を丸ごと回収）を最終状態として復元した。両箇所を `/* mrb_close(...); */` へ
+コメントアウトし、直前の説明コメントを「vendor estalloc defect」という断定から今回の
+調査結論（決定論再現あり・ABI mismatch は対照実験で棄却・victim/culprit 未決着）に更新。
+error パス（`vm_open` 失敗時、L147/160/169）の `mrb_close` は元の設計どおり変更していない。
+
+### 手順と実測結果
+```
+rm -rf build/ios-repl-sim
+RBENV_VERSION=4.0.5 rake ios:repl:lib ios:repl:gen ios:repl:build   # BUILD SUCCEEDED
+SIM_UDID=022CC935-D50B-4790-978F-E4CA1DD0F5DC RBENV_VERSION=4.0.5 rake ios:repl:observe
+```
+結果: `observe repl: {ok: 5} over 5 runs`（5 runs 全て `run N: ok`）。
+
+- 各 run の captured output に `hello 3` が 2 回出現（print と puts 経路の両方、golden と
+  同一 pattern）。
+- `run N: ok` のたびに `GOLDEN mismatch` と表示されたが、実体は
+  `build/observe/repl_golden.txt`（22:04 保存、以前の run の PID/timestamp を含む）と
+  今回の run（PID/timestamp が異なる）との diff が PID・timestamp 行のみであることを
+  `diff build/observe/repl_golden.txt build/observe/repl_run1.txt` で確認済み — 内容面
+  （`hello 3` を含む出力本体）は完全一致。golden mismatch は非決定要因（PID/timestamp）
+  によるもので機能的な差ではない。
+- `grep -l "EXC_BAD_ACCESS\|est_free\|remove_free_block" build/observe/repl_run*.txt` は
+  該当なし（5 run 全てで crash signature 無し）。
+- `~/Library/Logs/DiagnosticReports/` の `PicoRubyRunner-*.ips` 最新は 22:30 保存分（本 gate
+  実行前の Task 8 実験由来）で、本 gate の run（22:59-23:00）以降に新規 `.ips` は生成されて
+  いない — `observe` 関数の new-crash 判定（mtime >= launched_at）でも crash 無しと一致。
+
+**完了基準達成**: WA 復元状態で `examples/ios/repl` が frozen Simulator 上で 5/5 決定論的に
+正常終了（`hello 3` 捕捉・crash report 無し）。
