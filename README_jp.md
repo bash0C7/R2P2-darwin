@@ -94,6 +94,34 @@ picoruby は PicoRuby の共通コアで、各 mrbgem が `mrbgems/<gem>/ports/<
 iPhone)。`rake ios:vperiph:write` は、ペリフェラルを Mac 側から叩く macOS BLE
 セントラルヘルパーをビルドします (`WRITE_HEX` などは環境変数で渡します)。
 
+### 動作検証: observe / determinism
+
+`rake ios:repl:observe` は公式の動作検証ターゲットです。ビルド済みアプリを
+凍結した 1 台の Simulator 上で `OBSERVE_N` 回起動し (env `SIM_UDID` /
+`OBSERVE_N`、既定 5)、各 run を OK (repl example が `hello 3` を出力) か
+CRASH (新規 crash report または crash signature) に分類します。run 間で結果が
+食い違えば NON-DETERMINISTIC として abort します — 統制外の入力をここで
+検出します。「同一〈ビルドオプション × ビルド対象コード〉→ 同一の挙動」を
+仮定でなく担保された性質にする仕組みです。生ログは `build/observe/` 配下に
+残ります。
+
+`rake determinism:ios:repl` は補助的な build-content チェックです。
+`ios-repl` の `libmruby.a` を 2 回クリーンビルドし、object 内容のハッシュを
+比較して (`ar` ヘッダの timestamp 雑音は無視)、ビルド自体の再現性を検証します。
+
+運用上の注意:
+- observe は 1 台の凍結 Simulator に固定します (`SIM_UDID`、既定は Rakefile
+  内で設定) — 再作成・削除・factory reset をしないこと。Simulator の
+  container 状態は run をまたぐ統制変数です。
+- build_config の defines を変えたときは `rm -rf build/ios-repl-sim` して
+  から rebuild すること — picoruby の per-object コンパイル規則は `.c` の
+  mtime のみに依存し build_config の変更を検知しないため、stale な `.o` が
+  再利用され変更が効かないまま見過ごされます。
+
+現時点で対応しているのは `ios:repl` のみです。同じ `define_ios_example` /
+platform namespace の型に沿って、他の iOS example や将来の watchOS/macOS
+にも同じ observe 検証を展開できます。
+
 ### macOS ホスト
 
 macOS では picoruby をネイティブに動かします — example アプリではなくホスト

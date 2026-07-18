@@ -96,6 +96,35 @@ For example: `rake ios:torch:all` (Simulator) or `rake ios:torch:device:all`
 that drives the peripheral from the Mac (`WRITE_HEX` etc. pass through the
 environment).
 
+### Verifying behavior: observe / determinism
+
+`rake ios:repl:observe` is the official behavior-verification target: it
+launches the built app on a frozen Simulator `OBSERVE_N` times (env
+`SIM_UDID` / `OBSERVE_N`, default 5) and classifies each run OK (the repl
+example prints `hello 3`) or CRASH (a new crash report or crash signature).
+If the runs disagree, it aborts as NON-DETERMINISTIC — that's how an
+uncontrolled input gets caught. This is what turns "same build options ×
+same built code → same behavior" into an enforced property rather than an
+assumption. Raw logs land under `build/observe/`.
+
+`rake determinism:ios:repl` is a companion build-content check: it
+clean-builds `ios-repl`'s `libmruby.a` twice and compares object-content
+hashes (ignoring `ar` header timestamp noise) to verify the build itself is
+reproducible.
+
+Operational notes:
+- observe pins to one frozen Simulator (`SIM_UDID`, defaulted in the
+  Rakefile) — don't recreate/erase/factory-reset it; its container state is
+  a controlled variable across runs.
+- After changing a build_config's defines, `rm -rf build/ios-repl-sim`
+  before rebuilding — picoruby's per-object compile rule keys only on the
+  `.c` mtime, not on build_config changes, so a stale `.o` is reused and the
+  change silently fails to take effect.
+
+Only `ios:repl` is wired up today; the same `define_ios_example` /
+platform-namespace pattern extends to the other iOS examples and, later, to
+watchOS/macOS.
+
 ### macOS host
 
 macOS runs picoruby natively — host build modes, not example apps. Output
