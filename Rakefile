@@ -139,9 +139,15 @@ FROZEN_SIM_UDID = "022CC935-D50B-4790-978F-E4CA1DD0F5DC"
 # Simulator app process; it keeps streaming after the app itself is idle, so
 # each run is bounded with a fixed sleep + `simctl terminate` + TERM rather
 # than waited on to exit. OK requires the golden "hello 3" substring in the
-# captured output AND no new crash report; CRASH is a new .ips file under
-# DiagnosticReports (or, as a fallback, the estalloc crash signature showing
-# up in the captured output itself even if the .ips hasn't landed yet).
+# captured output AND no new crash report; CRASH is a new .ips file under the
+# HOST's ~/Library/Logs/DiagnosticReports (Simulator app crashes land there,
+# not under the per-device CoreSimulator data path — that path doesn't even
+# exist on hosts that have never had a crash reported through it) whose
+# filename starts with the app's process name (the bundle id's last
+# component, e.g. "PicoRubyRunner") and whose mtime is at/after this run's
+# launch time (so a report from a previous run isn't double-counted), or, as
+# a fallback, the estalloc crash signature showing up in the captured output
+# itself even if the .ips hasn't landed yet.
 # Aborts if the N runs disagree — that means an uncontrolled input is still in
 # play. Raw logs land in build/observe/<name>_run<i>.txt; the first OK run's
 # output is saved as build/observe/<name>_golden.txt for future runs to diff.
@@ -151,8 +157,8 @@ def observe(name, app, bundle_id)
   observe_dir = File.join(BUILD_DIR, "observe")
   mkdir_p observe_dir
   golden_path = File.join(observe_dir, "#{name}_golden.txt")
-  crash_dir = File.join(Dir.home, "Library", "Developer", "CoreSimulator", "Devices", udid,
-                        "data", "Library", "Logs", "DiagnosticReports")
+  crash_dir = File.expand_path("~/Library/Logs/DiagnosticReports")
+  process_name = bundle_id.split(".").last
 
   sh "xcrun simctl install #{udid} #{app.shellescape}"
 
@@ -175,7 +181,9 @@ def observe(name, app, bundle_id)
     logf.close
     output = File.read(log)
 
-    new_crashes = Dir.glob(File.join(crash_dir, "*.ips")).select { |f| File.mtime(f) >= launched_at }
+    new_crashes = Dir.exist?(crash_dir) ? Dir.glob(File.join(crash_dir, "*.ips")).select { |f|
+      File.basename(f).start_with?("#{process_name}-") && File.mtime(f) >= launched_at
+    } : []
     crashed = !new_crashes.empty? || output =~ /EXC_BAD_ACCESS|est_free|remove_free_block/
     ok = !crashed && output.include?("hello 3")
     status = crashed ? :crash : (ok ? :ok : :unknown)
