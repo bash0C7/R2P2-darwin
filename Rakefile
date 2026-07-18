@@ -129,6 +129,76 @@ def device_install_launch(pattern, label, app, bundle_id)
   sh "xcrun devicectl device process launch --console --device #{dev} #{bundle_id}"
 end
 
+# Simulator kept booted and never recreated/erased, so its DiagnosticReports
+# history and epoch stay stable across observe runs (env SIM_UDID overrides).
+FROZEN_SIM_UDID = "022CC935-D50B-4790-978F-E4CA1DD0F5DC"
+
+# Launch `app` on the frozen Simulator OBSERVE_N times (env, default 5) and
+# classify each run OK or CRASH. `xcrun simctl launch --console-pty` is the
+# only invocation found that captures both NSLog and print() output from a
+# Simulator app process; it keeps streaming after the app itself is idle, so
+# each run is bounded with a fixed sleep + `simctl terminate` + TERM rather
+# than waited on to exit. OK requires the golden "hello 3" substring in the
+# captured output AND no new crash report; CRASH is a new .ips file under
+# DiagnosticReports (or, as a fallback, the estalloc crash signature showing
+# up in the captured output itself even if the .ips hasn't landed yet).
+# Aborts if the N runs disagree — that means an uncontrolled input is still in
+# play. Raw logs land in build/observe/<name>_run<i>.txt; the first OK run's
+# output is saved as build/observe/<name>_golden.txt for future runs to diff.
+def observe(name, app, bundle_id)
+  udid = ENV["SIM_UDID"] || FROZEN_SIM_UDID
+  n    = Integer(ENV["OBSERVE_N"] || 5)
+  observe_dir = File.join(BUILD_DIR, "observe")
+  mkdir_p observe_dir
+  golden_path = File.join(observe_dir, "#{name}_golden.txt")
+  crash_dir = File.join(Dir.home, "Library", "Developer", "CoreSimulator", "Devices", udid,
+                        "data", "Library", "Logs", "DiagnosticReports")
+
+  sh "xcrun simctl install #{udid} #{app.shellescape}"
+
+  statuses = (1..n).map do |i|
+    sh "xcrun simctl terminate #{udid} #{bundle_id} 2>/dev/null; true"
+    log = File.join(observe_dir, "#{name}_run#{i}.txt")
+    launched_at = Time.now
+    logf = File.open(log, "w")
+    pid = Process.spawn("xcrun", "simctl", "launch", "--console-pty", udid, bundle_id,
+                         out: logf, err: logf)
+    sleep 5
+    sh "xcrun simctl terminate #{udid} #{bundle_id} 2>/dev/null; true"
+    sleep 1
+    begin
+      Process.kill("TERM", pid)
+    rescue Errno::ESRCH
+      # process already exited on its own between terminate and here
+    end
+    Process.wait(pid)
+    logf.close
+    output = File.read(log)
+
+    new_crashes = Dir.glob(File.join(crash_dir, "*.ips")).select { |f| File.mtime(f) >= launched_at }
+    crashed = !new_crashes.empty? || output =~ /EXC_BAD_ACCESS|est_free|remove_free_block/
+    ok = !crashed && output.include?("hello 3")
+    status = crashed ? :crash : (ok ? :ok : :unknown)
+    detail = crashed && !new_crashes.empty? ? " (new: #{new_crashes.map { |f| File.basename(f) }.join(", ")})" : ""
+    puts "run #{i}: #{status}#{detail}"
+
+    if status == :ok
+      if File.exist?(golden_path)
+        puts "  GOLDEN #{File.read(golden_path) == output ? "match" : "mismatch"}"
+      else
+        cp log, golden_path
+        puts "  golden saved: #{golden_path}"
+      end
+    end
+
+    status
+  end
+
+  tally = statuses.tally
+  puts "observe #{name}: #{tally} over #{n} runs"
+  abort "NON-DETERMINISTIC observe: #{tally.inspect} — raw logs under #{observe_dir}" if tally.size > 1
+end
+
 desc "Verify iOS/watchOS cross-build prerequisites (host builds: rake macos:check)"
 task :check do
   failures = []
@@ -210,6 +280,12 @@ def define_ios_example(name:, label:, dir:, scheme:, lib_phrase:, device_lib_phr
 
       desc "Full #{label} Simulator pipeline: lib -> gen -> build -> run"
       task all: [:lib, :gen, :build, :run]
+
+      desc "Observe #{label} launch N times on a frozen Simulator, classifying OK/CRASH (env: SIM_UDID, OBSERVE_N default 5)"
+      task :observe do
+        app = built_app(derived, "*-iphonesimulator", scheme, "ios:#{name}:build")
+        observe(name, app, bundle)
+      end
 
       namespace :device do
         desc "Cross-build libmruby.a (iphoneos arm64) #{device_lib_phrase} and stage under #{vendor_rel} (env: IOS_MIN)"
