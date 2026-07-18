@@ -361,12 +361,30 @@ namespace :host do
   end
 end
 
+# Content hash of a static archive's members, ignoring `ar` header metadata
+# (mtime/uid/gid) that varies build-to-build even when the compiled code is
+# identical. Used by determinism:ios:repl so the gate reflects real code/input
+# drift instead of archive-header noise.
+def libmruby_content_hash(lib)
+  require "tmpdir"
+  Dir.mktmpdir do |d|
+    sh "cd #{d.shellescape} && ar x #{lib.shellescape}"
+    members = Dir.glob(File.join(d, "*")).sort
+    Digest::SHA256.hexdigest(
+      members.map { |f| "#{File.basename(f)}:#{Digest::SHA256.file(f).hexdigest}" }.join("\n")
+    )
+  end
+end
+
 # Deterministic-build verification: the same (commit, build_config, vendor tree)
-# must produce a byte-identical libmruby.a. Guards against the "100KB drift"
-# where an unnoticed input change silently altered the archive.
+# must produce libmruby.a with byte-identical object content. Guards against
+# the "100KB drift" where an unnoticed input change silently altered the
+# archive; hashes extracted members rather than the raw .a so `ar` header
+# timestamps/uid/gid (which vary every build regardless of code) don't cause
+# false positives.
 namespace :determinism do
   namespace :ios do
-    desc "Verify ios-repl libmruby.a is byte-identical across two clean builds"
+    desc "Verify ios-repl libmruby.a has byte-identical object content across two clean builds"
     task :repl do
       lib = File.join(BUILD_DIR, "ios-repl-sim", "lib", "libmruby.a")
       hashes = (1..2).map do |i|
@@ -374,7 +392,7 @@ namespace :determinism do
         Rake::Task["setup"].reenable
         Rake::Task["ios:repl:lib"].reenable
         Rake::Task["ios:repl:lib"].invoke
-        h = Digest::SHA256.file(lib).hexdigest
+        h = libmruby_content_hash(lib)
         puts "build #{i}: #{h}"
         h
       end
