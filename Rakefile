@@ -1,5 +1,6 @@
 require "shellwords"
 require "rbconfig"
+require "digest"
 
 ROOT          = __dir__
 PICORUBY_REPO = ENV["PICORUBY_REPO"] || "https://github.com/bash0C7/picoruby.git"
@@ -357,6 +358,32 @@ namespace :host do
   task lib: :setup do
     cfg = File.join(ROOT, "build_config", "r2p2-picoruby-host.rb")
     sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
+  end
+end
+
+# Deterministic-build verification: the same (commit, build_config, vendor tree)
+# must produce a byte-identical libmruby.a. Guards against the "100KB drift"
+# where an unnoticed input change silently altered the archive.
+namespace :determinism do
+  namespace :ios do
+    desc "Verify ios-repl libmruby.a is byte-identical across two clean builds"
+    task :repl do
+      lib = File.join(BUILD_DIR, "ios-repl-sim", "lib", "libmruby.a")
+      hashes = (1..2).map do |i|
+        rm_rf File.join(BUILD_DIR, "ios-repl-sim")
+        Rake::Task["setup"].reenable
+        Rake::Task["ios:repl:lib"].reenable
+        Rake::Task["ios:repl:lib"].invoke
+        h = Digest::SHA256.file(lib).hexdigest
+        puts "build #{i}: #{h}"
+        h
+      end
+      if hashes.uniq.size == 1
+        puts "DETERMINISTIC ok: #{hashes.first}"
+      else
+        abort "NON-DETERMINISTIC: #{hashes.inspect} — investigate embedded timestamps/paths/ar ordering"
+      end
+    end
   end
 end
 
