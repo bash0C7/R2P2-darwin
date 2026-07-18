@@ -108,3 +108,65 @@ microcontroller profile 値をハードコードしている。
   発生するため）まま不発。結果、5 回とも `crashed=false, ok=false` → `:unknown` に落ちた。
   → **Task 5 の observe は crash_dir のパスが誤りで、実クラッシュを見逃す**（このタスクで判明した
   新規の欠陥。Task 7 以降の bisect で observe を使うなら先に crash_dir 修正が要る）。
+
+## Task 7 (commit 軸) 決着 — 1 行記録
+crash 要素（mrb_close active・libmruby BASELINE/1024・app CONSTRAINED/128）は app 誕生の
+c9e0d1b(2026-06-21) 以降ずっと連続して存在し、要素が揃う前の non-crash commit が repo 履歴に無い。
+コード軸の境界は mrb_close 一行のみ（Task 5: ok ↔ Task 6: crash で実証済み）。→ bisect は無意味、
+弁別軸は param 軸（本 Task 8）。
+
+## Param-axis controlled experiment (Task 8)
+
+### 事前調査
+- `vendor/picoruby/lib/picoruby/build.rb:135` `posix? = cc.defines.include?("PICORB_PLATFORM_POSIX")`。
+  build_config が `PICORB_PLATFORM_POSIX` を立てているため `posix?` は真。
+- `vendor/picoruby/mrbgems/picoruby-mruby/mrbgem.rake:36-46`: `if spec.build.wasm? || spec.build.posix?`
+  の真側で `spec.build.defines << "MRB_BASELINE_PROFILE=1"`（HEAP_PAGE_SIZE は設定しない→
+  `src/gc.c:165-166` の default 1024 が有効）。偽側（non-posix）でのみ `MRB_CONSTRAINED_BASELINE_PROFILE=1`
+  と `MRB_HEAP_PAGE_SIZE=128`（非 O1HEAP 時）を設定。
+  → **libmruby 側は現在 `MRB_BASELINE_PROFILE=1` + heap page 1024 相当で compile されている**
+  （静的解析どおりで確認どおり。app 側 project.yml は `MRB_CONSTRAINED_BASELINE_PROFILE=1` +
+  `MRB_HEAP_PAGE_SIZE=128`）。
+- `mrbconf.h:212-227` は `#if defined(MRB_CONSTRAINED_BASELINE_PROFILE) ... #elif defined(MRB_BASELINE_PROFILE)`
+  の順で判定するため、build_config に `conf.cc.defines << "MRB_CONSTRAINED_BASELINE_PROFILE=1"` を
+  追加するだけで足りる（mrbgem.rake が併せて `MRB_BASELINE_PROFILE=1` も積むが、`#if`/`#elif` の
+  順序上 CONSTRAINED 側が勝つため衝突しない）。HEAP_PAGE_SIZE も同様に `conf.cc.defines <<
+  "MRB_HEAP_PAGE_SIZE=128"` を直接追加するだけで posix 分岐の未設定を上書きできる。
+
+### 方法論上の重要な落とし穴（実験前に発覚・修正）
+mrbgem.rake の `file obj => [file] do ... end`（picoruby-mruby 配下の `lib/mruby/src/*.c` 全般、
+gc.c 含む）は **source ファイルの mtime にのみ依存し、build_config の mtime/内容には依存しない**。
+build_config の define だけ変えて `rake ios:repl:lib` を再実行しても、既存の `build/ios-repl-sim/`
+下の `.o`（例: gc.o）は「up to date」と判定され **再コンパイルされない**。実際、Exp1/Exp2/Exp3 を
+`rm -rf build/ios-repl-sim` 無しで実行した初回試行では、`gc.o` の mtime が define 変更前のまま
+（3 回とも同一 stale object を再リンクしていただけ）と判明し、3 回とも `{crash:5}` が出たが
+**これは無意味な結果**（define 変更が一切 libmruby に反映されていない）。CLAUDE.md の
+「クリーンビルドで stale object を除去する際は repo 直下 build/<target>/ を消す」の通り、
+各 Exp 前に `rm -rf build/ios-repl-sim` を追加してから正しく再実験した（下表は全て clean 後の結果）。
+
+また、`ios:repl:observe` が「new crash」と認識する host 側 `.ips` は、macOS の crash reporter が
+**同一プロセス名の繰り返し crash に対して既存ファイル名を再利用しつつ mtime だけ更新する**
+ことがあり（filename の日時 ≠ 実際の発生時刻）、1 回だけ `{unknown:1, crash:4}` の非決定表示が
+出た（Exp3 初回）。同一 build のまま observe を再実行すると `{crash:5}` に安定したため、
+crash-reporter の生成レイテンシ起因の見かけ上のノイズと判断（実クラッシュは 5/5 のまま）。
+
+### 実験結果（全て clean rebuild 後、canonical から 1 変数のみ変更、mrb_close は復活のまま）
+| Exp | 変更内容（libmruby build_config のみ） | observe tally |
+|---|---|---|
+| baseline（変更なし、sanity re-check） | canonical（`MRB_BASELINE_PROFILE=1` 相当、heap page 1024） | `{crash: 5}` |
+| Exp1 | `conf.cc.defines << "MRB_HEAP_PAGE_SIZE=128"` のみ追加 | `{crash: 5}` |
+| Exp2 | `conf.cc.defines << "MRB_CONSTRAINED_BASELINE_PROFILE=1"` のみ追加 | `{crash: 5}` |
+| Exp3 | Exp1 + Exp2 両方（app 側 project.yml と完全一致） | `{crash: 5}`（初回 `{unknown:1,crash:4}` → 再 observe で `{crash:5}` に安定） |
+
+### 真因帰属
+**build-param（MRB_CONSTRAINED_BASELINE_PROFILE / MRB_HEAP_PAGE_SIZE）の mismatch は真因ではない。**
+libmruby 側 build_config を app 側 project.yml と完全に一致させても（Exp3）決定論的 crash
+（`{crash:5}`）が残った。仮説（ABI mismatch by profile/heap-page define 不一致）は**棄却**。
+mrb_close 復活済み teardown 経路での est_free crash は、profile/heap-page の define 一致とは
+独立に発生する — estalloc または mruby 内部（gc.c の teardown ロジック / estalloc の
+free-block 管理）側の欠陥である可能性が高い。次段は watchpoint 等での実行時観測に進む
+（Task 9 以降の判断材料）。
+
+### build_config の最終状態
+実験終了後 `git checkout -- build_config/r2p2-picoruby-ios-repl-sim.rb` で baseline に復元。
+`git status` で差分なしを確認済み（このコミット時点で build_config は変更していない）。
