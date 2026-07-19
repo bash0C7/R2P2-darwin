@@ -330,8 +330,11 @@ gemを足します。`virtual-peripheral`と`stackchan`で`Array#pack`が使え�
 [repl example](examples/ios/repl/README_jp.md#aotとインタプリタ)に実証済みの
 ベンチカーネルが`aot-kernel/`以下に入っています。物理のiPhone 16eでは、1回の
 呼び出しに十分な計算を寄せて境界を越えるコストが薄まると、ネイティブ版がインタ
-プリタの約50倍に達します。これを自分のメソッドに適用する手順は`aot-embed` skill
-（`.claude/skills/aot-embed/`）にあります。
+プリタの約50倍に達します。
+
+生成されるgemはツリーに入っていません。ビルド前にRubyのソースから再生成します。
+`vendor/picoruby`をvendorせずfetchするのと同じ扱いです。これを自分のメソッドに
+適用する手順は`aot-embed` skill（`.claude/skills/aot-embed/`）にあります。
 
 ## vendorの取得元
 

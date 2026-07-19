@@ -333,12 +333,15 @@ The interpreted original stays in the tree as the A/B baseline, and `app.rb`
 calls the same method name either way — on the full-mruby VM the generated gem
 registers on `kernel_module` when the VM opens, so there is no `require` to add.
 
-The [repl example](examples/ios/repl/README.md#aot-vs-interpreter) carries a
+The [repl example](examples/ios/repl/README.md#aot-native-kernel) carries a
 worked benchmark kernel under `aot-kernel/`. On a physical iPhone 16e the native
 version reaches roughly 50× the interpreter once each call does enough work to
-amortize the cost of crossing the boundary. The step-by-step procedure for
-applying this to a method of your own lives in the `aot-embed` skill
-(`.claude/skills/aot-embed/`).
+amortize the cost of crossing the boundary.
+
+The generated gem is not in the tree. It is regenerated from its Ruby source
+before the build, the same way `vendor/picoruby` is fetched rather than
+vendored. The step-by-step procedure for applying this to a method of your own
+lives in the `aot-embed` skill (`.claude/skills/aot-embed/`).
 
 ## Vendor source
 

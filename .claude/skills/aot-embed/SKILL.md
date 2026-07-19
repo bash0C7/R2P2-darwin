@@ -58,17 +58,22 @@ class Object
 end
 ```
 
-### 2. Generate the mrbgem
+### 2. Generate the mrbgem (a reproducible build product, not committed)
+
+Run from the kernel dir; spinel/suppify are external tools discovered like `cc`:
 
 ```sh
+cd examples/ios/<example>/aot-kernel
 SPINEL=/path/to/spinel/spinel SPINEL_LIB=/path/to/spinel/lib \
-  ruby /path/to/suppify/suppify.rb <name>.rb -o <name> -t picoruby \
-  -d examples/ios/<example>
+  ruby /path/to/suppify/suppify.rb <name>.rb -o <name> -t picoruby -d ..
 #   -> examples/ios/<example>/picoruby-<name>/   (an mrbgem)
 ```
 
-Never hand-edit the generated C / mrbgem.rake — to change the kernel, edit `<name>.rb` and
-re-run suppify. The generated `binding.c` is dual-VM (`#if defined(PICORB_VM_MRUBYC)`);
+Gitignore the generated `picoruby-<name>/`: it is deterministic for a given
+spinel/suppify version, so regenerate it rather than committing it — mirroring how
+`vendor/picoruby` is fetched, not vendored. Never hand-edit the generated C /
+mrbgem.rake — to change the kernel, edit `<name>.rb` and re-run suppify. The
+generated `binding.c` is dual-VM (`#if defined(PICORB_VM_MRUBYC)`);
 R2P2-darwin builds the **full-mruby** branch, whose `mrb_picoruby_<name>_gem_init` registers
 the method on `kernel_module` at `mrb_open`. So **no `require` is needed** in the app
 (unlike mruby/c firmware, where the gem is activated by `require`).
