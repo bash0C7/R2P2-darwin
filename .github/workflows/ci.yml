@@ -50,7 +50,7 @@ jobs:
       # against this spinel regenerates the exact gem verified on device.
       - name: Clone spinel + suppify (pinned)
         env:
-          SUPPIFY_REF: 56e5f929b15fb3374b249d9615a08ef6fb755356
+          SUPPIFY_REF: c0ee66083b4cdffab84f35a63706b67a698e12de
         run: |
           git clone --quiet https://github.com/bash0C7/suppify.git build/aot/suppify
           git -C build/aot/suppify checkout --quiet "$SUPPIFY_REF"
