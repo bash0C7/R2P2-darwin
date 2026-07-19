@@ -37,10 +37,51 @@ jobs:
           path: |
             build/host
             build/ios-repl-sim
-          key: build-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**') }}
+          key: build-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**', 'examples/ios/repl/aot-kernel/**') }}
 
       - name: Bridge smoke test (host build)
         run: rake smoke
+
+      # The repl example's AOT kernel gem (examples/ios/repl/picoruby-bench_tick)
+      # is a regenerated build product, not committed. Rebuild it from
+      # aot-kernel/bench_tick.{rb,rbs} with spinel + suppify — external tools,
+      # cloned ephemerally the way `cc` lives on PATH — before ios:lib wires it
+      # in. Both are pinned to a verified-compatible commit pair: this suppify
+      # against this spinel regenerates the exact gem verified on device.
+      - name: Clone spinel + suppify (pinned)
+        env:
+          SUPPIFY_REF: 56e5f929b15fb3374b249d9615a08ef6fb755356
+        run: |
+          git clone --quiet https://github.com/bash0C7/suppify.git build/aot/suppify
+          git -C build/aot/suppify checkout --quiet "$SUPPIFY_REF"
+
+      - name: Cache spinel build
+        id: spinel-cache
+        uses: actions/cache@v4
+        with:
+          path: build/aot/spinel
+          key: spinel-e52019d6f8ac6cf795f10e5a3165b56bf84c69ac
+
+      - name: Build spinel
+        if: steps.spinel-cache.outputs.cache-hit != 'true'
+        env:
+          SPINEL_REF: e52019d6f8ac6cf795f10e5a3165b56bf84c69ac
+        run: |
+          git clone --quiet https://github.com/matz/spinel.git build/aot/spinel
+          git -C build/aot/spinel checkout --quiet "$SPINEL_REF"
+          make -C build/aot/spinel deps
+          make -C build/aot/spinel
+
+      - name: Regenerate AOT gem (spinel + suppify)
+        working-directory: examples/ios/repl/aot-kernel
+        env:
+          SPINEL: ${{ github.workspace }}/build/aot/spinel/bin/spinel
+          SPINEL_LIB: ${{ github.workspace }}/build/aot/spinel/lib
+          BUNDLE_GEMFILE: ${{ github.workspace }}/build/aot/suppify/Gemfile
+        run: |
+          bundle install
+          bundle exec ruby "$GITHUB_WORKSPACE/build/aot/suppify/suppify.rb" \
+            bench_tick.rb -o bench_tick -t picoruby -d ..
 
       # ios:build declares no dependency on ios:gen, so run the three
       # pipeline steps explicitly in order. Device/signing tasks can't run
