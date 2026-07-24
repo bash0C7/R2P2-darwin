@@ -143,6 +143,16 @@ rake macos:single APP=examples/macos/ls/ls.rb   # one self-contained binary embe
 `build_config/r2p2-picoruby-darwin.rb`; `r2p2-picoruby-darwin-ble.rb` opts
 into picoruby-ble / CoreBluetooth).
 
+A binary built with `r2p2-picoruby-darwin-ble.rb` cannot be run by directly
+executing `./build/host/bin/picoruby` at runtime: macOS's TCC framework hard-
+aborts (`SIGABRT`) any CoreBluetooth call from a process not launched through
+LaunchServices out of an app bundle declaring
+`NSBluetoothAlwaysUsageDescription` — even a signed, previously-authorized
+binary. Consumers that need BLE at runtime wrap the built binary in such a
+bundle and launch it with `open -a` (see
+[stackchan-picoruby's `pc/stackchan-pico`](https://github.com/bash0C7/stackchan-picoruby/tree/main/pc/stackchan-pico)
+for a working example).
+
 ## On-device builds
 
 Device tasks build for the connected iPhone or Apple Watch with automatic

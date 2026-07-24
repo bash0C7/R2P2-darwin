@@ -74,3 +74,10 @@ REPL/shell bin を落とした single-binary 用。
 保つ薄い rake wrapper（`macos:build` / `macos:run` / `macos:single`）で構成する。
 picoruby/picoruby が Darwin host 用 build config を取り込めば macOS host 部分は役目を
 終える（PR 経路は picoruby fork 側、本 repo からは PR しない）。
+
+`r2p2-picoruby-darwin-ble.rb` で `macos:build` したバイナリは、CoreBluetooth API を
+叩いた瞬間に macOS TCC が `SIGABRT` で落とす — LaunchServices 経由でアプリバンドル
+（`NSBluetoothAlwaysUsageDescription` 入り Info.plist）から起動された process 以外は、
+署名済み・許可済みでも例外なく落ちる。本 repo はバイナリを生成するだけで bundle 化は
+利用側（例: stackchan-picoruby の `pc/stackchan-pico`、`rake pc:app_bundle` + `open -a`）
+の責務。macos.rake にバンドル化タスクを足す必要はない。

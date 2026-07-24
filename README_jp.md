@@ -140,6 +140,14 @@ rake macos:single APP=examples/macos/ls/ls.rb   # スクリプトを埋め込ん
 `build_config/r2p2-picoruby-darwin.rb`。`r2p2-picoruby-darwin-ble.rb` で
 picoruby-ble / CoreBluetooth をオプトインします)。
 
+`r2p2-picoruby-darwin-ble.rb` でビルドしたバイナリは `./build/host/bin/picoruby`
+を直接実行しては動きません。macOS の TCC は、LaunchServices 経由で
+`NSBluetoothAlwaysUsageDescription` を宣言したアプリバンドルから起動された
+プロセス以外の CoreBluetooth 呼び出しを、署名済み・許可済みのバイナリでも
+`SIGABRT` で落とします。実行時に BLE が要る利用側は、ビルド済みバイナリを
+そのようなバンドルに包み `open -a` で起動してください (実例は
+[stackchan-picoruby の `pc/stackchan-pico`](https://github.com/bash0C7/stackchan-picoruby/tree/main/pc/stackchan-pico) 参照)。
+
 ## 実機ビルド
 
 device 系タスクは、接続中の iPhone / Apple Watch に対して automatic signing で
