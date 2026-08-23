@@ -84,6 +84,9 @@ littlefs / watchdog、`sigint_status` の port 側 storage）を要求する。i
   `rake smoke` がその受入テスト。唯一の例外は mruby VM の task HAL（`mrb_hal_task_init` 等）で、
   これは host では mruby-task の posix port、iOS/watchOS では `bridge/task_hal_ios.c` が持つ。
   darwin port の `hal.c` がこれを定義すると archive から引かれた瞬間に二重定義になる
+- gem の `ports/darwin/ext/` は Swift package（`picoruby-ble` は自分の mrbgem.rake で `swift build`、
+  example gem のものは Xcode が app link 時に build）。fork の `lib/picoruby/gem.rb` は POSIX の
+  port glob からこの subtree を除外する — darwin port に C source を足すときは `ext/` の外に置く
 - POSIX では `picoruby-mruby` が `mruby-io`（`puts` / `print` の提供元）と `mruby-task` を依存に足し、
   `MRB_BASELINE_PROFILE=1` を build-wide に定義する。非 POSIX なら代わりに
   `MRB_CONSTRAINED_BASELINE_PROFILE=1` + `MRB_HEAP_PAGE_SIZE=128`。config に profile define を
