@@ -57,8 +57,8 @@ def generate_prism_templates
 end
 
 # Destination id of the SPECIFIC connected device (not generic/platform=...) so
-# -allowProvisioningUpdates can register it with the Personal Team and generate
-# a profile. `platform` is "iOS" or "watchOS".
+# -allowProvisioningUpdates + -allowProvisioningDeviceRegistration can register
+# it with the team and generate a profile. `platform` is "iOS" or "watchOS".
 def connected_destination(proj, scheme, platform)
   dest = `xcodebuild -project #{proj.shellescape} -scheme #{scheme} -showdestinations 2>/dev/null`.lines
          .grep(/platform:#{platform},/).reject { |l| l =~ /Simulator|placeholder/ }
@@ -68,13 +68,17 @@ def connected_destination(proj, scheme, platform)
 end
 
 # Signed device build against the connected device. Automatic signing resolves
-# the team set in the example's project.yml.
+# the team set in the example's project.yml. -allowProvisioningUpdates alone
+# only refreshes profiles/certificates; registering a device the team has not
+# seen (or whose Personal Team registration has expired) additionally needs
+# -allowProvisioningDeviceRegistration (see `xcodebuild -help`).
 def device_build(proj, scheme, derived, archs:, platform: "iOS")
   dest = connected_destination(proj, scheme, platform)
   sh "xcodebuild -project #{proj.shellescape} -scheme #{scheme} " \
      "-destination 'id=#{dest}' " \
      "-derivedDataPath #{derived.shellescape} " \
-     "ARCHS=#{archs} -allowProvisioningUpdates build"
+     "ARCHS=#{archs} -allowProvisioningUpdates " \
+     "-allowProvisioningDeviceRegistration build"
 end
 
 # Simulator build. libmruby.a (and, where present, the PicoBLEDarwin Swift
