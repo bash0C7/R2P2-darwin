@@ -63,6 +63,19 @@ MRuby::CrossBuild.new("ios-vperiph-sim") do |conf|
 
   conf.gem core: "mruby-compiler"
 
+  # picoruby-ble's mrblib needs mruby-string-ext at LOAD time, not just at
+  # runtime: picoruby-require's load_paths calls String#start_with?, so the
+  # unguarded-by-prebuilt require "cyw43" at the top of ble.rb raises
+  # NoMethodError (not LoadError) without it, slipping past ble.rb's
+  # rescue LoadError and silently skipping the whole BLE Ruby layer at
+  # mrb_open (class BLE then exists C-only: no constants, no scan).
+  # Array#pack / sprintf are the runtime users. Same trio as the
+  # stackchan configs.
+  mruby_mrbgems = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-string-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-pack"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-sprintf"
+
   # --- Virtual Peripheral: picoruby-ble + CoreBluetooth Darwin port -----------------
   # Select the Darwin port for every gem that ships one. picoruby-ble's `setup`
   # then compiles ports/darwin/*.c (the BLE_* port ABI -> pble_* Swift backend)
