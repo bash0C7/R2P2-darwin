@@ -87,6 +87,11 @@ littlefs / watchdog、`sigint_status` の port 側 storage）を要求する。i
 - gem の `ports/darwin/ext/` は Swift package（`picoruby-ble` は自分の mrbgem.rake で `swift build`、
   example gem のものは Xcode が app link 時に build）。fork の `lib/picoruby/gem.rb` は POSIX の
   port glob からこの subtree を除外する — darwin port に C source を足すときは `ext/` の外に置く
+- watchOS（と tvOS）の SDK は `fork` / `exec` を禁止するので、POSIX で入る `mruby-io` の posix HAL
+  （`IO.popen` 用）がそのままでは compile できない。mruby-io は upstream mruby の submodule なので
+  触らず、mruby の外部 HAL provider 規約（`hal-<short>-<conf>` 名の gem が port object を置き換える）で
+  fork の `hal-io-darwin` gem を watchOS config に `conf.gem core: "hal-io-darwin"` で入れる。
+  iOS / macOS では不要（posix HAL のまま）
 - POSIX では `picoruby-mruby` が `mruby-io`（`puts` / `print` の提供元）と `mruby-task` を依存に足し、
   `MRB_BASELINE_PROFILE=1` を build-wide に定義する。非 POSIX なら代わりに
   `MRB_CONSTRAINED_BASELINE_PROFILE=1` + `MRB_HEAP_PAGE_SIZE=128`。config に profile define を

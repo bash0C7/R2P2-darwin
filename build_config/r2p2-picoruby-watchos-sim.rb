@@ -48,4 +48,8 @@ MRuby::CrossBuild.new("watchos-sim") do |conf|
   # Upstream configs get it through gembox "core"; this reduced gem set adds it
   # explicitly. The :darwin port is what gets compiled (first match).
   conf.gem core: "picoruby-machine"
+  # watchOS forbids fork/exec, which mruby-io's POSIX HAL uses for IO.popen.
+  # hal-io-darwin is mruby's external HAL provider for mruby-io (hal-<short>-<conf>
+  # naming): it replaces ports/posix/io_hal.c with the same code minus spawning.
+  conf.gem core: "hal-io-darwin"
 end
