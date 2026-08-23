@@ -81,6 +81,18 @@ def device_build(proj, scheme, derived, archs:, platform: "iOS")
      "-allowProvisioningDeviceRegistration build"
 end
 
+# Unsigned generic-device build: compiles and links the device app against
+# the device libmruby.a with no connected device and no signing identity, so
+# device-SDK-only breakage (an API the device SDK marks unavailable, a port
+# symbol missing from the device archive) surfaces before the signing/install
+# session. Signing and install stay with `device:build` / `device:run`.
+def device_check_build(proj, scheme, derived, archs:, platform: "iOS")
+  sh "xcodebuild -project #{proj.shellescape} -scheme #{scheme} " \
+     "-destination 'generic/platform=#{platform}' " \
+     "-derivedDataPath #{derived.shellescape} " \
+     "ARCHS=#{archs} CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build"
+end
+
 # Simulator build. libmruby.a (and, where present, the PicoBLEDarwin Swift
 # package) are arm64 only; restrict to arm64 so the linker does not reject them
 # for the x86_64 slice of the generic simulator destination.
@@ -310,6 +322,11 @@ def define_ios_example(name:, label:, dir:, scheme:, lib_phrase:, device_lib_phr
           device_build(proj, scheme, device_derived, archs: "arm64")
         end
 
+        desc "Link the #{label} app for a generic iOS device without signing (no device needed)"
+        task :check do
+          device_check_build(proj, scheme, device_derived, archs: "arm64")
+        end
+
         desc "Install and launch the #{label} app on the connected iOS device"
         task :run do
           app = built_app(device_derived, "*-iphoneos", scheme, "ios:#{name}:device:build")
@@ -421,6 +438,12 @@ namespace :watchos do
       task :build do
         device_build(watch_proj, "WatchLEDToggle", watch_device_derived,
                      archs: "arm64_32", platform: "watchOS")
+      end
+
+      desc "Link the Watch LED Toggle app for a generic watchOS device without signing (no watch needed)"
+      task :check do
+        device_check_build(watch_proj, "WatchLEDToggle", watch_device_derived,
+                           archs: "arm64_32", platform: "watchOS")
       end
 
       desc "Install and launch the Watch LED Toggle app on the connected Apple Watch"
