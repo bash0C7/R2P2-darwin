@@ -5,8 +5,10 @@
 # run. Toolchain is host-appropriate (plain MRuby::Build, no -arch/-isysroot).
 # Defines and port chain mirror the iOS configs (PICORB_PLATFORM_POSIX +
 # PICORB_PLATFORM_DARWIN, conf.ports :darwin, :posix), so the host build
-# compiles the same ports/darwin sources the cross-builds do and the smoke
-# test doubles as the acceptance test of the darwin port.
+# compiles the same ports/darwin sources the cross-builds do: the smoke test
+# exercises ports/darwin/machine.c on the host. Device-SDK-only breakage
+# (APIs the iOS/watchOS SDKs forbid) is what `rake ios:<name>:device:check`
+# and `rake watchos:led:device:check` catch.
 MRuby::Build.new("host") do |conf|
   conf.toolchain :clang
 

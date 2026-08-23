@@ -14,9 +14,10 @@
 # libmruby.a or the Swift layer. A successful response means the mbedTLS
 # handshake completed on iOS using the Darwin entropy port.
 #
-# picoruby-net's posix TLS port sets MBEDTLS_SSL_VERIFY_NONE — it completes the
-# handshake but does not validate the server certificate. This example demonstrates
-# connectivity + handshake, not a trust decision.
+# The demo sets verify_mode = SSLContext::VERIFY_NONE (see fetch): iOS ships no PEM
+# CA bundle for mbedTLS, so the handshake completes but the server certificate is
+# not validated. This example demonstrates connectivity + handshake, not a trust
+# decision; bundle a CA PEM and pass it to SSLContext#set_ca_pem to verify.
 HOST = "example.com"
 PATH = "/"
 

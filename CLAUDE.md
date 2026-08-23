@@ -40,8 +40,12 @@ push 前に `PICORUBY_REF` が指す branch へ**必ず統合する**こと — 
 R2P2-darwin は Apple 各ターゲットの build 依存を格納する repo で、Apple 向け port を
 選択する build-config を持つ（削る = pruning ではない）。例: picoruby-ble は
 darwin/CoreBluetooth port が rp2040(cyw43/btstack) transport の drop-in 代替。iOS では
-darwin port を選び、rp2040 専用の `cyw43` や、darwin code path が参照しない
-`mbedtls`/`rng` の transitive 依存は引かない。
+darwin port を選び、rp2040 専用の `cyw43` は gem 自身の `unless build.darwin?` で外れる。
+`picoruby-mbedtls` / `picoruby-rng` の transitive 依存は**外さない** — `ble.rb` は boot で
+`require 'mbedtls'` し GATT database hash に `MbedTLS::CMAC` を使うので、config で
+`spec.dependencies.reject!` すると BLE の Ruby 層が丸ごと読み込まれない（`BLE.new` が
+`wrong number of arguments` で落ちる）。両 gem の darwin port は iOS で build でき、app 側は
+`-framework Security`（`SecRandomCopyBytes`）を link する。
 
 置き場所の線引き:
 - picoruby の gem に属するもの（各 gem の `ports/darwin/`、`darwin?` 述語、port loader）は
@@ -81,9 +85,13 @@ littlefs / watchdog、`sigint_status` の port 側 storage）を要求する。i
   `gembox "core"` 経由で常に含めている
 - CrossBuild では first match により darwin port だけが compile されるので、**fork の
   `ports/darwin/` は posix port が提供する symbol をすべて自前で提供する（自己完結）**。
-  `rake smoke` がその受入テスト。唯一の例外は mruby VM の task HAL（`mrb_hal_task_init` 等）で、
-  これは host では mruby-task の posix port、iOS/watchOS では `bridge/task_hal_ios.c` が持つ。
-  darwin port の `hal.c` がこれを定義すると archive から引かれた瞬間に二重定義になる
+  `rake smoke` は host で `ports/darwin/machine.c` を exercise し、device SDK 固有の破損（SDK が禁止する
+  API）は `rake ios:<name>:device:check` / `rake watchos:led:device:check` が捕まえる。唯一の例外は
+  mruby VM の task HAL（`mrb_hal_task_init` / `final` / `idle_cpu` / `sleep_us`、`mrb_task_enable_irq` /
+  `disable_irq`）で、これは host では mruby-task の posix port、iOS/watchOS では `bridge/task_hal_ios.c`
+  が持つ。cross build の archive にも mruby-task の posix `task_hal.o` は入っており、bridge がこの
+  6 symbol を**全部**定義しているから member が引かれず二重定義にならない — upstream が HAL entry を
+  足したら bridge にも足す。darwin port の `hal.c` がこれを定義してはいけないのも同じ理由
 - gem の `ports/darwin/ext/` は Swift package（`picoruby-ble` は自分の mrbgem.rake で `swift build`、
   example gem のものは Xcode が app link 時に build）。fork の `lib/picoruby/gem.rb` は POSIX の
   port glob からこの subtree を除外する — darwin port に C source を足すときは `ext/` の外に置く
@@ -92,8 +100,8 @@ littlefs / watchdog、`sigint_status` の port 側 storage）を要求する。i
   触らず、mruby の外部 HAL provider 規約（`hal-<short>-<conf>` 名の gem が port object を置き換える）で
   fork の `hal-io-darwin` gem を watchOS config に `conf.gem core: "hal-io-darwin"` で入れる。
   iOS / macOS では不要（posix HAL のまま）
-- POSIX では `picoruby-mruby` が `mruby-io`（`puts` / `print` の提供元）と `mruby-task` を依存に足し、
-  `MRB_BASELINE_PROFILE=1` を build-wide に定義する。非 POSIX なら代わりに
+- POSIX では `picoruby-mruby` が `mruby-io`（`puts` / `print` の提供元）を依存に足し（`mruby-task` は
+  常に依存）、`MRB_BASELINE_PROFILE=1` を build-wide に定義する。非 POSIX なら代わりに
   `MRB_CONSTRAINED_BASELINE_PROFILE=1` + `MRB_HEAP_PAGE_SIZE=128`。config に profile define を
   手書きしない（POSIX と矛盾する）
 - define parity: `examples/*/*/project.yml` の `GCC_PREPROCESSOR_DEFINITIONS` と `Rakefile` の smoke

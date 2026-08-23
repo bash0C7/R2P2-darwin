@@ -31,7 +31,9 @@ puts "Defines from build_config (#{defs.size}): #{defs.join(' ')}"
 unless defs.include?("PICORB_PLATFORM_POSIX")
   raise "#{CONFIG_RB} must define PICORB_PLATFORM_POSIX (Darwin is POSIX)"
 end
-gem_defs = %w[PICORB_VM_MRUBY MRB_USE_TASK_SCHEDULER MRB_BASELINE_PROFILE=1]
+# HAVE_MRUBY_IO_GEM comes from mruby-io (build-wide), NDEBUG from picoruby's
+# non-debug build (lib/picoruby/build.rb).
+gem_defs = %w[PICORB_VM_MRUBY MRB_USE_TASK_SCHEDULER MRB_BASELINE_PROFILE=1 HAVE_MRUBY_IO_GEM NDEBUG=1]
 puts "Defines from gems (#{gem_defs.size}): #{gem_defs.join(' ')}"
 DEFINES = (defs + gem_defs).map { |d| "-D#{d}" }.join(" ")
 
@@ -50,7 +52,11 @@ INCLUDES = [
   "vendor/picoruby/mrbgems/mruby-compiler/include",
   "vendor/picoruby/mrbgems/mruby-compiler/lib/prism/include",
   "vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include",
-  "vendor/picoruby/mrbgems/picoruby-mruby/lib/estalloc",
+  "vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-io/include",
+  "vendor/picoruby/mrbgems/picoruby-machine/include",
+  "vendor/picoruby/mrbgems/picoruby-machine/lib/estalloc",
+  "vendor/picoruby/mrbgems/picoruby-io-console/include",
+  "vendor/picoruby/mrbgems/hal-io-darwin/src",
   "vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/src",
 ].map { |p| "-I #{File.join(ROOT, p).shellescape}" }.join(" ")
 

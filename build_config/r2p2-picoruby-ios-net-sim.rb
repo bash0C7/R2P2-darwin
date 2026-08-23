@@ -44,9 +44,9 @@ MRuby::CrossBuild.new("ios-net-sim") do |conf|
   conf.cc.defines << "MRB_NO_BOXING"
   conf.cc.defines << "MRB_UTF8_STRING"
 
-  # iOS port selection: darwin first, posix fallback. Gives mbedtls/rng their
-  # SecRandomCopyBytes entropy ports; net itself has only a posix port (picked up
-  # by its build.posix? branch, not by ports selection).
+  # iOS port selection: darwin first, posix fallback. Selects picoruby-socket's
+  # darwin port (BSD sockets + mbedTLS) and gives mbedtls/rng their
+  # SecRandomCopyBytes entropy ports.
   conf.ports :darwin, :posix
 
   conf.picoruby
