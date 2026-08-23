@@ -498,12 +498,17 @@ task smoke: "host:lib" do
   lib    = File.join(BUILD_DIR, "host", "lib", "libmruby.a")
   out    = "/tmp/picoruby_smoke"
 
-  # Defines must match the host build config (r2p2-picoruby-host.rb) so the
-  # bridge sees the same ABI (no-boxing, int64, estalloc, task scheduler).
+  # Defines must match what the host build (r2p2-picoruby-host.rb) compiled
+  # libmruby.a with, so the bridge sees the same ABI (no-boxing, int64,
+  # estalloc, task scheduler). MRB_BASELINE_PROFILE=1 is not in the config:
+  # picoruby-mruby adds it build-wide whenever PICORB_PLATFORM_POSIX is set,
+  # and it changes sizeof(mrb_state). Audit against the `-D` flags of a
+  # `rake -v` build log when either side changes.
   defines = %w[
     PICORB_ALLOC_ESTALLOC PICORB_ALLOC_ALIGN=8
     MRB_NO_BOXING MRB_INT64 MRB_UTF8_STRING
-    PICORB_PLATFORM_DARWIN
+    PICORB_PLATFORM_POSIX PICORB_PLATFORM_DARWIN
+    MRB_BASELINE_PROFILE=1
     MRB_TICK_UNIT=4 MRB_TIMESLICE_TICK_COUNT=3
     MRB_USE_TASK_SCHEDULER=1 MRB_USE_VM_SWITCH_DISPATCH=1
   ].map { |d| "-D#{d}" }.join(" ")

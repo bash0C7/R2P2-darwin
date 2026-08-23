@@ -42,7 +42,8 @@ MRuby::CrossBuild.new("ios-stackchan-device") do |conf|
   conf.cc.defines << "MRB_TIMESLICE_TICK_COUNT=3"
   conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
   conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
-  conf.cc.defines << "PICORB_PLATFORM_DARWIN"
+  conf.cc.defines << "PICORB_PLATFORM_POSIX"   # Darwin IS POSIX (XNU + BSD libc)
+  conf.cc.defines << "PICORB_PLATFORM_DARWIN"  # ...and darwin (additive)
   conf.cc.defines << "MRB_INT64"
   conf.cc.defines << "MRB_NO_BOXING"
   conf.cc.defines << "MRB_UTF8_STRING"
@@ -60,7 +61,12 @@ MRuby::CrossBuild.new("ios-stackchan-device") do |conf|
   conf.gem gemdir: "#{mruby_mrbgems}/mruby-sprintf"
 
   # --- Stack-chan: picoruby-ble + CoreBluetooth Darwin port -----------------
-  conf.ports :darwin
+  conf.ports :darwin, :posix
+  # picoruby-machine carries the Estalloc heap glue the VM links against
+  # (mrb_basic_alloc_func / mrb_open_with_custom_alloc) and the Machine module.
+  # Upstream configs get it through gembox "core"; this reduced gem set adds it
+  # explicitly. The :darwin port is what gets compiled (first match).
+  conf.gem core: "picoruby-machine"
 
   ble_gemdir = ENV["PICORUBY_BLE_GEMDIR"] ||
     File.expand_path("../vendor/picoruby/mrbgems/picoruby-ble", __dir__)

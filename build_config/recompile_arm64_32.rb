@@ -22,7 +22,18 @@ config_src = File.read(CONFIG_RB)
 defs = config_src.scan(/conf\.cc\.defines\s*<<\s*"([^"]+)"/).flatten
 raise "no cc.defines found in #{CONFIG_RB}" if defs.empty?
 puts "Defines from build_config (#{defs.size}): #{defs.join(' ')}"
-DEFINES = defs.map { |d| "-D#{d}" }.join(" ")
+
+# Defines the gems add build-wide, which the config file cannot show: the VM
+# selector and task scheduler from conf.picoruby / mruby-task, and the profile
+# picoruby-mruby derives from PICORB_PLATFORM_POSIX (it changes
+# sizeof(mrb_state), so every object must agree). Keep in step with
+# vendor/picoruby/lib/picoruby/build.rb and picoruby-mruby/mrbgem.rake.
+unless defs.include?("PICORB_PLATFORM_POSIX")
+  raise "#{CONFIG_RB} must define PICORB_PLATFORM_POSIX (Darwin is POSIX)"
+end
+gem_defs = %w[PICORB_VM_MRUBY MRB_USE_TASK_SCHEDULER MRB_BASELINE_PROFILE=1]
+puts "Defines from gems (#{gem_defs.size}): #{gem_defs.join(' ')}"
+DEFINES = (defs + gem_defs).map { |d| "-D#{d}" }.join(" ")
 
 # The deployment target must match for the same reason: parse the config's
 # `watchos_min = ENV["WATCHOS_MIN"] || <default>` so recompiled objects carry
