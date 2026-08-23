@@ -169,52 +169,60 @@ char *vm_call(void *vm, const char *method, const char *arg) {
   dup2(fileno(cap), 1); dup2(fileno(cap), 2);
 
   int ai = mrb_gc_arena_save(mrb);
-  /* Expose method/arg to the fixed dispatcher source via globals. */
-  mrb_gv_set(mrb, mrb_intern_lit(mrb, "$__vm_method"),
-             mrb_symbol_value(mrb_intern_cstr(mrb, method)));
-  mrb_gv_set(mrb, mrb_intern_lit(mrb, "$__vm_arg"), mrb_str_new_cstr(mrb, arg));
-
-  /* picoruby-ble (and anything else built on mruby-task) waits on
-   * Task::Queue#pop, which raises on the root context (task_queue.c's
-   * guard). Run the dispatch inside a task exactly like boot's run_irep
-   * so blocking pops park on the scheduler. The one-line source is
-   * recompiled per call: mrc_create_task's mrc_resolve_intern mutates
-   * the irep in place, so one irep cannot back two tasks. __send__ from
-   * bytecode re-dispatches in the same callinfo (no C boundary), which
-   * keeps Task::Queue#pop legal inside the called method. */
-  static const char dispatch_src[] = "$app.__send__($__vm_method, $__vm_arg)";
-  mrc_ccontext *cc = mrc_ccontext_new(mrb);
-  mrc_ccontext_filename(cc, "vm_call");
-  const uint8_t *u = (const uint8_t *)dispatch_src;
-  mrc_irep *irep = mrc_load_string_cxt(cc, &u, sizeof(dispatch_src) - 1);
-  if (irep == NULL) {
-    /* Unreachable: the source is a fixed literal. */
-    print_diagnostics(cc);
+  if (mrb_nil_p(mrb_gv_get(mrb, mrb_intern_lit(mrb, "$app")))) {
+    /* Boot ran but never assigned $app (a runtime exception before the
+     * assignment): every dispatch would raise NoMethodError on nil and a
+     * periodic tick would spam one backtrace per call. Say what actually
+     * happened, once per call, instead. */
+    fprintf(stderr, "vm_call: $app is nil (boot failed before assigning it)\n");
   } else {
-    mrb_value name = mrb_str_new_cstr(mrb, "vm_call");
-    mrb_value task = mrc_create_task(cc, irep, name, mrb_nil_value(),
-                                     mrb_obj_value(mrb->top_self));
-    if (mrb_nil_p(task)) {
-      fprintf(stderr, "vm_call: mrc_create_task failed\n");
+    /* Expose method/arg to the fixed dispatcher source via globals. */
+    mrb_gv_set(mrb, mrb_intern_lit(mrb, "$__vm_method"),
+               mrb_symbol_value(mrb_intern_cstr(mrb, method)));
+    mrb_gv_set(mrb, mrb_intern_lit(mrb, "$__vm_arg"), mrb_str_new_cstr(mrb, arg));
+
+    /* picoruby-ble (and anything else built on mruby-task) waits on
+     * Task::Queue#pop, which raises on the root context (task_queue.c's
+     * guard). Run the dispatch inside a task exactly like boot's run_irep
+     * so blocking pops park on the scheduler. The one-line source is
+     * recompiled per call: mrc_create_task's mrc_resolve_intern mutates
+     * the irep in place, so one irep cannot back two tasks. __send__ from
+     * bytecode re-dispatches in the same callinfo (no C boundary), which
+     * keeps Task::Queue#pop legal inside the called method. */
+    static const char dispatch_src[] = "$app.__send__($__vm_method, $__vm_arg)";
+    mrc_ccontext *cc = mrc_ccontext_new(mrb);
+    mrc_ccontext_filename(cc, "vm_call");
+    const uint8_t *u = (const uint8_t *)dispatch_src;
+    mrc_irep *irep = mrc_load_string_cxt(cc, &u, sizeof(dispatch_src) - 1);
+    if (irep == NULL) {
+      /* Unreachable: the source is a fixed literal. */
+      print_diagnostics(cc);
     } else {
-      mrb_task_run(mrb);
-      /* The scheduler captures an uncaught exception as the task result
-       * (execute_task_vm's exception_as_result), so mrb->exc stays clear;
-       * report it the same way run_irep does. */
-      mrb_value result = mrb_task_value(mrb, task);
-      if (mrb_exception_p(result)) {
-        mrb->exc = mrb_obj_ptr(result);
-        mrb_print_error(mrb);
-        mrb->exc = NULL;
+      mrb_value name = mrb_str_new_cstr(mrb, "vm_call");
+      mrb_value task = mrc_create_task(cc, irep, name, mrb_nil_value(),
+                                       mrb_obj_value(mrb->top_self));
+      if (mrb_nil_p(task)) {
+        fprintf(stderr, "vm_call: mrc_create_task failed\n");
+      } else {
+        mrb_task_run(mrb);
+        /* The scheduler captures an uncaught exception as the task result
+         * (execute_task_vm's exception_as_result), so mrb->exc stays clear;
+         * report it the same way run_irep does. */
+        mrb_value result = mrb_task_value(mrb, task);
+        if (mrb_exception_p(result)) {
+          mrb->exc = mrb_obj_ptr(result);
+          mrb_print_error(mrb);
+          mrb->exc = NULL;
+        }
+        /* Tasks are mrb_gc_register'ed for life at creation; close frees
+         * the context and unregisters so per-call tasks cannot accumulate
+         * (tick alone would otherwise leak one per second). */
+        mrb_close_task(mrb, task);
       }
-      /* Tasks are mrb_gc_register'ed for life at creation; close frees
-       * the context and unregisters so per-call tasks cannot accumulate
-       * (tick alone would otherwise leak one per second). */
-      mrb_close_task(mrb, task);
     }
+    mrc_ccontext_free(cc);
+    mrb_gv_set(mrb, mrb_intern_lit(mrb, "$__vm_arg"), mrb_nil_value());
   }
-  mrc_ccontext_free(cc);
-  mrb_gv_set(mrb, mrb_intern_lit(mrb, "$__vm_arg"), mrb_nil_value());
   mrb_gc_arena_restore(mrb, ai);
 
   fflush(stdout); fflush(stderr);

@@ -45,6 +45,22 @@ static int test_vm_call_blocking_pop(void) {
   return bad;
 }
 
+/* Boot that raises before assigning $app: vm_call must say so in one line
+ * (not raise NoMethodError-on-nil per call — a periodic tick would spam a
+ * backtrace every call; observed live in the virtual-peripheral example). */
+static int test_vm_call_nil_app(void) {
+  const char *boot = "raise \"boot boom\"\n$app = 1\n";
+  void *vm = vm_open(boot);
+  if (!vm) { printf("FAIL nil_app: vm_open returned NULL\n"); return 1; }
+  char *out = vm_call(vm, "anything", "");
+  int bad = (out == NULL) || (strstr(out, "vm_call: $app is nil") == NULL);
+  printf("%s nil_app: -> %s", bad ? "FAIL" : "PASS", out ? out : "(null)\n");
+  if (bad && out) printf("  (expected to contain: vm_call: $app is nil)\n");
+  free(out);
+  vm_close(vm);
+  return bad;
+}
+
 static int test_persistent_vm(void) {
   const char *boot =
     "class Demo\n"
@@ -68,6 +84,7 @@ int main(void) {
   fails += check("syntax",    "1 +",                    "");  /* must not crash */
   fails += test_persistent_vm();
   fails += test_vm_call_blocking_pop();
+  fails += test_vm_call_nil_app();
   if (fails) { printf("\n%d failure(s)\n", fails); return 1; }
   printf("\nall passed\n");
   return 0;
