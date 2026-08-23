@@ -68,7 +68,7 @@ picoruby は PicoRuby の共通コアで、各 mrbgem が `mrbgems/<gem>/ports/<
 | 変数 | デフォルト | 制御対象 |
 |---|---|---|
 | `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picoruby の取得元 |
-| `PICORUBY_REF` | `port-darwin` | 取得する ref — master + darwin ports + net fix ([Vendor fork](#vendor-fork) 参照) |
+| `PICORUBY_REF` | `port-darwin` | 取得する ref — master + darwin ports ([Vendor fork](#vendor-fork) 参照) |
 | `IOS_MIN` | `17.0` | iOS deployment minimum (iOS ビルド設定が読みます) |
 | `WATCHOS_MIN` | `11.0` | watchOS deployment minimum (watchOS ビルド設定が読みます) |
 | `PICORUBY_BLE_GEMDIR` | vendor の `picoruby-ble` | BLE example 用の picoruby-ble 代替チェックアウト |
@@ -83,7 +83,7 @@ picoruby は PicoRuby の共通コアで、各 mrbgem が `mrbgems/<gem>/ports/<
 | Example | rake namespace | 見どころ |
 |---|---|---|
 | [ios/repl](examples/ios/repl/README_jp.md) | `ios:repl` (`ios` が alias) | アプリに打ち込んだ Ruby を評価する full-REPL VM |
-| [ios/networking](examples/ios/networking/README_jp.md) | `ios:net` | Ruby から HTTP/TLS — mbedTLS 上の picoruby-net、URLSession 不使用 |
+| [ios/networking](examples/ios/networking/README_jp.md) | `ios:net` | Ruby から HTTP/TLS — picoruby-socket の darwin port (mbedTLS) 上の Net::HTTP、URLSession 不使用 |
 | [ios/virtual-peripheral](examples/ios/virtual-peripheral/README_jp.md) | `ios:vperiph` | Ruby で書いた BLE ペリフェラル (picoruby-ble darwin port 経由の CoreBluetooth) |
 | [ios/iphone-torch](examples/ios/iphone-torch/README_jp.md) | `ios:torch` | iPhone の「L チカ」: `app.rb` が駆動するフラッシュライト |
 | [ios/stackchan](examples/ios/stackchan/README_jp.md) | `ios:stackchan` | [Stack-chan](https://github.com/meganetaaan/stack-chan) を NUS 越しに駆動する BLE セントラル |
@@ -198,13 +198,13 @@ full-REPL gembox (`mruby-posix` + `core` + `stdlib` + `shell`、
 ## Vendor fork
 
 デフォルトの vendor 取得元 (`bash0C7/picoruby` の `port-darwin` branch) は、
-upstream master に darwin ports (ble / rng / mbedtls / io-console / machine) と、
-iOS networking が依存する picoruby-net POSIX port のアロケータ修正 (iOS ブリッジ
-は VM を estalloc プール上で動かすため、受信バッファは VM アロケータ由来である
-必要があります) を加えたものです。upstream `picoruby/picoruby` の master には
-どちらも無いため、`PICORUBY_REF` を upstream に向けると `networking` /
-`virtual-peripheral` / `stackchan` が壊れます。これらを含む fork/branch なら
-何でもよく、vendor を特定の ref に固定する規則ではありません。
+upstream master に darwin ports (ble / rng / mbedtls / io-console / machine /
+socket) と `hal-io-darwin` (fork/exec が禁止された watchOS 向けの mruby-io HAL) を
+加えたものです。upstream `picoruby/picoruby` の master にはどれも無いため、
+`PICORUBY_REF` を upstream に向けると darwin port を先に compile する example
+(`conf.ports :darwin, :posix`) — `networking` (TLS に OpenSSL が要る) /
+`virtual-peripheral` / `stackchan` / watchOS build — が壊れます。これらを含む
+fork/branch なら何でもよく、vendor を特定の ref に固定する規則ではありません。
 
 ## 動作確認済み環境
 

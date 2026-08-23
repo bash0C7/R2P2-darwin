@@ -1,11 +1,11 @@
-# Networking — Ruby で HTTP/TLS を行う (picoruby-net over mbedTLS)
+# Networking — Ruby で HTTP/TLS を行う (Net::HTTP over picoruby-socket + mbedTLS)
 
 English: [README.md](README.md)
 
-HTTP/TLS の往復処理はすべて Ruby です。`app.rb` が呼ぶ `Net::HTTPSClient` は
-upstream の `picoruby-net` gem のもので、iOS 上では生の BSD socket を開き、
-mbedTLS で TLS handshake を行います (`picoruby-net` の
-`ports/posix/tls_client.c`)。entropy は `picoruby-mbedtls`/`picoruby-rng` の
+HTTP/TLS の往復処理はすべて Ruby です。`app.rb` が呼ぶ `Net::HTTP` は
+upstream の `picoruby-net-http` gem のもので、その下の `picoruby-socket` の
+darwin port (fork `port-darwin` の `ports/darwin/ssl_socket.c`) が iOS 上で生の
+BSD socket を開き、mbedTLS で TLS handshake を行います。entropy は `picoruby-mbedtls`/`picoruby-rng` の
 Darwin port が供給し、その実体は `-framework Security` 経由の
 `SecRandomCopyBytes` です。OpenSSL も Apple の URL loading API
 (`URLSession`/`CFNetwork`) も使わないため、それらの API のみを対象とする App
@@ -14,19 +14,20 @@ Transport Security は適用されません。このアプリの TLS は PicoRub
 
 full-REPL gembox (`posix?=true` と `conf.ports :darwin, :posix` の port chain —
 [root README の「全体の組み合わさり方」](../../../README_jp.md#全体の組み合わさり方) の gembox の説明を参照) を必要とする唯一の example です。他の example が使う
-reduced VM では動きません。`picoruby-net`/`picoruby-mbedtls`/`picoruby-rng` は
+reduced VM では動きません。`picoruby-socket`/`picoruby-mbedtls`/`picoruby-rng` は
 いずれも POSIX 前提の `build.posix?` 分岐を想定しているためです。
 
 ## 仕組み
 
 FETCH ボタンを押すと、SwiftUI から mbedTLS まで一続きの呼び出しが走ります。
-bridge より下の層はすべて Ruby と picoruby-net の C です。
+bridge より下の層はすべて Ruby と picoruby-socket の C です。
 
 ```
 [SwiftUI FETCH button]
-  --VMExecutor.shared.call("fetch")-->  $app (Ruby, NetApp)  -->  Net::HTTPSClient.new(HOST).get(PATH)
-    --> picoruby-net (mruby glue)                  src/mruby/net.c
-    --> ports/posix/tls_client.c                   raw BSD socket + mbedTLS handshake
+  --VMExecutor.shared.call("fetch")-->  $app (Ruby, NetApp)  -->  Net::HTTP.new(HOST, 443).get(PATH)
+    --> picoruby-net-http (Ruby)                   SSLSocket.open(host, port, ctx)
+    --> picoruby-socket (mruby glue)               src/mruby/ssl_socket.c
+    --> ports/darwin/ssl_socket.c                  raw BSD socket + mbedTLS handshake
     --> mbedTLS entropy source                     picoruby-mbedtls Darwin port -> SecRandomCopyBytes
 ```
 
@@ -44,19 +45,18 @@ PicoRuby の prism compiler がアプリ内で実行時コンパイルします�
 - レスポンスが返ってくれば、Darwin entropy port を使った mbedTLS handshake が
   iOS 上で完了した証拠になります。その全体を動かしているのはこの Ruby
   ファイルだけです。
-- 既知の制限 (`app.rb` 冒頭のコメント参照): `picoruby-net` の POSIX TLS port
-  は `MBEDTLS_SSL_VERIFY_NONE` を設定しており、handshake は完了しますが
-  server certificate の検証は行いません。この example が示すのは接続と
-  handshake であって、信頼判断ではありません。
+- 既知の制限 (`app.rb` の `fetch` 内コメント参照): iOS には mbedTLS が検証に使える
+  PEM の CA bundle が無いため、demo は `verify_mode = SSLContext::VERIFY_NONE` を
+  設定しています。handshake は完了しますが server certificate の検証は行いません。
+  検証するには CA の PEM を resource として同梱し `SSLContext#ca=` に渡します。
+  この example が示すのは接続と handshake であって、信頼判断ではありません。
 
 ## 依存
 
-この example は、`picoruby-net` の POSIX recv-buffer allocator 修正を含む
+この example は、`picoruby-socket` の darwin port (BSD socket + mbedTLS) を含む
 `vendor/picoruby` でのみ動きます。default の fetch 先 (`bash0C7/picoruby` の
-`port-darwin` branch) にはこの修正が入っています。root README の [Vendor fork](../../../README_jp.md#vendor-fork) を参照してください。この修正がないと、独自の `estalloc` VM allocator を経由
-してレスポンスが届いた時点で free-list が壊れ、handshake 完了直後にクラッシュ
-します (キャプチャされた stdout は return 時にしか flush されないため、ハング
-したように見えます)。
+`port-darwin` branch) には含まれています。root README の [Vendor fork](../../../README_jp.md#vendor-fork) を参照してください。upstream の `picoruby/picoruby` には posix port しかなく、
+その TLS は iOS に無い OpenSSL を link します。
 
 ## ビルドと実行
 
@@ -88,8 +88,8 @@ rake ios:net:device:all
 
 pipeline の各ステップは個別の task としても呼べます。
 
-- `rake ios:net:lib` — Simulator 向け `libmruby.a` を picoruby-net +
-  mbedTLS/rng darwin ports 込みで cross-build し、`Vendor/` 配下に配置
+- `rake ios:net:lib` — Simulator 向け `libmruby.a` を picoruby-net-http +
+  socket/mbedTLS/rng darwin ports 込みで cross-build し、`Vendor/` 配下に配置
 - `rake ios:net:gen` — `project.yml` から `Networking.xcodeproj` を生成
 - `rake ios:net:build` — Simulator 向けにアプリをビルド
 - `rake ios:net:run` — Simulator を起動してインストール・launch

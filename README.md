@@ -68,7 +68,7 @@ mutated. Environment variables:
 | Variable | Default | Controls |
 |---|---|---|
 | `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picoruby source repo |
-| `PICORUBY_REF` | `port-darwin` | ref to fetch — master + darwin ports + net fix (see [Vendor fork](#vendor-fork)) |
+| `PICORUBY_REF` | `port-darwin` | ref to fetch — master + darwin ports (see [Vendor fork](#vendor-fork)) |
 | `IOS_MIN` | `17.0` | iOS deployment minimum (iOS build configs) |
 | `WATCHOS_MIN` | `11.0` | watchOS deployment minimum (watchOS build configs) |
 | `PICORUBY_BLE_GEMDIR` | vendor's `picoruby-ble` | alternate picoruby-ble checkout for the BLE examples |
@@ -84,7 +84,7 @@ installs, and launches on a connected device — see
 | Example | rake namespace | What it shows |
 |---|---|---|
 | [ios/repl](examples/ios/repl/README.md) | `ios:repl` (aliased as `ios`) | evaluate Ruby typed into the app, full-REPL VM |
-| [ios/networking](examples/ios/networking/README.md) | `ios:net` | HTTP/TLS from Ruby — picoruby-net over mbedTLS, no URLSession |
+| [ios/networking](examples/ios/networking/README.md) | `ios:net` | HTTP/TLS from Ruby — Net::HTTP over picoruby-socket's darwin port (mbedTLS), no URLSession |
 | [ios/virtual-peripheral](examples/ios/virtual-peripheral/README.md) | `ios:vperiph` | a BLE peripheral written in Ruby (CoreBluetooth via the picoruby-ble darwin port) |
 | [ios/iphone-torch](examples/ios/iphone-torch/README.md) | `ios:torch` | the iPhone "L-chika": flashlight driven from `app.rb` |
 | [ios/stackchan](examples/ios/stackchan/README.md) | `ios:stackchan` | a BLE central driving a [Stack-chan](https://github.com/meganetaaan/stack-chan) robot over NUS |
@@ -208,12 +208,12 @@ Ruby against `rake smoke`'s host build before relying on it on-device.
 
 The default vendor source (`bash0C7/picoruby`, branch `port-darwin`) is
 upstream master plus the darwin ports (ble / rng / mbedtls / io-console /
-machine) and an allocator fix to picoruby-net's POSIX port that iOS networking
-depends on (the receive buffer must come from the VM allocator, because the
-iOS bridge runs the VM on an estalloc pool). Upstream `picoruby/picoruby`
-master has neither, so pointing `PICORUBY_REF` at upstream breaks
-`networking`, `virtual-peripheral`, and `stackchan`. Any fork/branch carrying
-these works — the vendor is not pinned to one ref.
+machine / socket) and `hal-io-darwin` (mruby-io's HAL for watchOS, which
+forbids fork/exec). Upstream `picoruby/picoruby` master has none of them, so
+pointing `PICORUBY_REF` at upstream breaks every example that compiles a
+darwin port first (`conf.ports :darwin, :posix`): `networking` (its TLS would
+need OpenSSL), `virtual-peripheral`, `stackchan`, and the watchOS build. Any
+fork/branch carrying these works — the vendor is not pinned to one ref.
 
 ## Verified environment
 

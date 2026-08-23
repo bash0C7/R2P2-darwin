@@ -1,11 +1,12 @@
-# Networking — HTTP/TLS from Ruby (picoruby-net over mbedTLS)
+# Networking — HTTP/TLS from Ruby (Net::HTTP over picoruby-socket + mbedTLS)
 
 日本語版: [README_jp.md](README_jp.md)
 
-The whole HTTP/TLS round-trip is Ruby. `app.rb` calls `Net::HTTPSClient` from the
-upstream `picoruby-net` gem: on iOS it dials a raw BSD socket and runs the TLS
-handshake through mbedTLS (`picoruby-net`'s `ports/posix/tls_client.c`), seeded by
-the `picoruby-mbedtls`/`picoruby-rng` Darwin entropy ports (`SecRandomCopyBytes`
+The whole HTTP/TLS round-trip is Ruby. `app.rb` calls `Net::HTTP` from the
+upstream `picoruby-net-http` gem on top of `picoruby-socket`: on iOS the socket
+gem's darwin port (fork `port-darwin`, `ports/darwin/ssl_socket.c`) dials a raw
+BSD socket and runs the TLS handshake through mbedTLS, seeded by the
+`picoruby-mbedtls`/`picoruby-rng` Darwin entropy ports (`SecRandomCopyBytes`
 via `-framework Security`). No OpenSSL and no Apple URL-loading API
 (`URLSession`/`CFNetwork`) is involved, so App Transport Security — which governs
 only those APIs — does not apply: this app's TLS is PicoRuby's own, running
@@ -14,19 +15,20 @@ on-device.
 This is the one example that needs the full-REPL gembox (`posix?=true` plus the
 `conf.ports :darwin, :posix` port chain — see the gembox notes in
 [How it fits together](../../../README.md#how-it-fits-together)), not the reduced VM
-the other examples use: `picoruby-net`/`picoruby-mbedtls`/`picoruby-rng` all
+the other examples use: `picoruby-socket`/`picoruby-mbedtls`/`picoruby-rng` all
 assume a POSIX-shaped `build.posix?` branch.
 
 ## How it works
 
 The FETCH button drives one call chain from SwiftUI down to mbedTLS; every layer
-below the bridge is Ruby or picoruby-net C.
+below the bridge is Ruby or picoruby-socket C.
 
 ```
 [SwiftUI FETCH button]
-  --VMExecutor.shared.call("fetch")-->  $app (Ruby, NetApp)  -->  Net::HTTPSClient.new(HOST).get(PATH)
-    --> picoruby-net (mruby glue)                  src/mruby/net.c
-    --> ports/posix/tls_client.c                   raw BSD socket + mbedTLS handshake
+  --VMExecutor.shared.call("fetch")-->  $app (Ruby, NetApp)  -->  Net::HTTP.new(HOST, 443).get(PATH)
+    --> picoruby-net-http (Ruby)                   SSLSocket.open(host, port, ctx)
+    --> picoruby-socket (mruby glue)               src/mruby/ssl_socket.c
+    --> ports/darwin/ssl_socket.c                  raw BSD socket + mbedTLS handshake
     --> mbedTLS entropy source                     picoruby-mbedtls Darwin port -> SecRandomCopyBytes
 ```
 
@@ -43,20 +45,21 @@ app, by PicoRuby's prism compiler when the VM boots.
   rebuild of `libmruby.a` or the Swift layer.
 - A successful response means the mbedTLS handshake completed on iOS using the
   Darwin entropy port, driven entirely by that Ruby file.
-- Known limitation (see `app.rb`'s header comment): `picoruby-net`'s POSIX TLS
-  port sets `MBEDTLS_SSL_VERIFY_NONE` — it completes the handshake but does not
-  validate the server certificate. This example demonstrates connectivity plus
+- Known limitation (see the comment in `app.rb`'s `fetch`): the demo sets
+  `verify_mode = SSLContext::VERIFY_NONE` because iOS ships no PEM CA bundle
+  for mbedTLS to verify against — it completes the handshake but does not
+  validate the server certificate. To verify, bundle a CA PEM as a resource
+  and hand it to `SSLContext#ca=`. This example demonstrates connectivity plus
   handshake, not a trust decision.
 
 ## Dependencies
 
-This example only works against a `vendor/picoruby` that carries the
-`picoruby-net` POSIX recv-buffer allocator fix, which the default fetch
-(`bash0C7/picoruby`, branch `port-darwin`) includes — see
-[Vendor fork](../../../README.md#vendor-fork)
-in the root README. Without it, a response arriving over the custom `estalloc`
-VM allocator corrupts the free-list and crashes right after the handshake
-completes (it looks like a hang, since captured stdout only flushes on return).
+This example only works against a `vendor/picoruby` that carries
+`picoruby-socket`'s darwin port (BSD sockets + mbedTLS), which the default
+fetch (`bash0C7/picoruby`, branch `port-darwin`) includes — see
+[Vendor fork](../../../README.md#vendor-fork) in the root README. Upstream
+`picoruby/picoruby` has only the posix port, whose TLS links OpenSSL, which
+iOS does not ship.
 
 ## Build & run
 
@@ -87,8 +90,8 @@ On a real device, tapping FETCH (or the boot-time auto-fetch) logs
 
 Each pipeline step is also exposed as its own task.
 
-- `rake ios:net:lib` — cross-build `libmruby.a` (Simulator) with picoruby-net +
-  mbedTLS/rng darwin ports, stage under `Vendor/`
+- `rake ios:net:lib` — cross-build `libmruby.a` (Simulator) with picoruby-net-http +
+  the socket/mbedTLS/rng darwin ports, stage under `Vendor/`
 - `rake ios:net:gen` — generate `Networking.xcodeproj` from `project.yml`
 - `rake ios:net:build` — build the app for the Simulator
 - `rake ios:net:run` — boot a Simulator, install, launch

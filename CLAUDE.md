@@ -19,8 +19,8 @@ Simulator / 署名、および macOS host の clang + Swift）を picoruby に�
    クリーンビルドで stale object を除去する際は repo 直下 `build/<target>/` を消す
 
 依存 picoruby は `PICORUBY_REPO` / `PICORUBY_REF` で切替（default: fork
-`bash0C7/picoruby` の `port-darwin` branch — ble/rng/mbedtls/io-console/machine の
-darwin port と picoruby-net の POSIX allocator fix を統合した branch）。upstream
+`bash0C7/picoruby` の `port-darwin` branch — ble/rng/mbedtls/io-console/machine/socket の
+darwin port と hal-io-darwin を統合した branch）。upstream
 `picoruby/picoruby` の master にはこれらの darwin port が無く、REPL/networking
 example が要る `conf.ports :darwin, :posix` の fallback 先が壊れるため、upstream
 を指すと動かない example が出る。fork は master を内包した完全な tree なので
