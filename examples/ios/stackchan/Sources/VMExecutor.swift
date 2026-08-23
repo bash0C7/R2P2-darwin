@@ -34,7 +34,9 @@ final class VMExecutor {
     func call(_ method: String, _ arg: String, onResult: @escaping (String) -> Void) {
         queue.async {
             guard let vm = self.vm else {
-                onResult("(VM not ready)")
+                // Deliver on main like the happy path below: callers mutate
+                // SwiftUI @State in onResult and must never run off-main.
+                DispatchQueue.main.async { onResult("(VM not ready)") }
                 return
             }
             let out = method.withCString { m in

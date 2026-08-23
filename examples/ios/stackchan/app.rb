@@ -226,7 +226,13 @@ if BLE_AVAILABLE
     # Scan -> connect -> discover (all driven inside scan/connect's event loop) ->
     # bind the NUS RX value handle. Returns true once the RX handle is bound.
     def connect
-      return true if connected?
+      if connected?
+        # Emit the same status line as a fresh success: the Swift UI derives
+        # its connected/failed state from this exact string, so a silent early
+        # return would flip the status to "connect failed" on a re-tap.
+        print "Connected; RX value_handle bound\n"
+        return true
+      end
       print "Scanning for Stack-chan (NUS)\n"
       # On the Simulator no peripheral answers; scan simply times out.
       @ble.scan(timeout_ms: 30000)
