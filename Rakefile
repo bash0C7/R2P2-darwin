@@ -114,12 +114,19 @@ def built_app(derived, products_glob, app_name, build_task)
   app
 end
 
-# Boot the first available simulator matching `device_label` ("iPhone" or
-# "Apple Watch"), then install and launch the app.
-def sim_install_launch(device_label, app, bundle_id)
+# UDID of the first available simulator whose name matches `device_label`
+# ("iPhone" or "Apple Watch").
+def first_available_sim(device_label)
   udid = `xcrun simctl list devices available`.lines
          .grep(/#{device_label}/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
   raise "no available #{device_label} simulator" unless udid
+  udid
+end
+
+# Boot the first available simulator matching `device_label` ("iPhone" or
+# "Apple Watch"), then install and launch the app.
+def sim_install_launch(device_label, app, bundle_id)
+  udid = first_available_sim(device_label)
   sh "xcrun simctl boot #{udid} 2>/dev/null; true"
   sh "open -a Simulator"
   sh "xcrun simctl install #{udid} #{app.shellescape}"
@@ -154,7 +161,7 @@ FROZEN_SIM_UDID = "022CC935-D50B-4790-978F-E4CA1DD0F5DC"
 # only invocation found that captures both NSLog and print() output from a
 # Simulator app process; it keeps streaming after the app itself is idle, so
 # each run is bounded with a fixed sleep + `simctl terminate` + TERM rather
-# than waited on to exit. OK requires the golden "hello 3" substring in the
+# than waited on to exit. OK requires the example's `golden:` substring in the
 # captured output AND no new crash report; CRASH is a new .ips file under the
 # HOST's ~/Library/Logs/DiagnosticReports (Simulator app crashes land there,
 # not under the per-device CoreSimulator data path — that path doesn't even
@@ -167,8 +174,12 @@ FROZEN_SIM_UDID = "022CC935-D50B-4790-978F-E4CA1DD0F5DC"
 # Aborts if the N runs disagree — that means an uncontrolled input is still in
 # play. Raw logs land in build/observe/<name>_run<i>.txt; the first OK run's
 # output is saved as build/observe/<name>_golden.txt for future runs to diff.
-def observe(name, app, bundle_id)
+def observe(name, app, bundle_id, golden:)
   udid = ENV["SIM_UDID"] || FROZEN_SIM_UDID
+  unless `xcrun simctl list devices available`.include?(udid)
+    udid = first_available_sim("iPhone")
+    warn "observe: frozen simulator not on this host; using #{udid} (set SIM_UDID to pin one)"
+  end
   n    = Integer(ENV["OBSERVE_N"] || 5)
   observe_dir = File.join(BUILD_DIR, "observe")
   mkdir_p observe_dir
@@ -201,7 +212,7 @@ def observe(name, app, bundle_id)
       File.basename(f).start_with?("#{process_name}-") && File.mtime(f) >= launched_at
     } : []
     crashed = !new_crashes.empty? || output =~ /EXC_BAD_ACCESS|est_free|remove_free_block/
-    ok = !crashed && output.include?("hello 3")
+    ok = !crashed && output.include?(golden)
     status = crashed ? :crash : (ok ? :ok : :unknown)
     detail = crashed && !new_crashes.empty? ? " (new: #{new_crashes.map { |f| File.basename(f) }.join(", ")})" : ""
     puts "run #{i}: #{status}#{detail}"
@@ -270,7 +281,7 @@ end
 #   (derived data). `label` names the app in task descriptions; `lib_phrase`
 #   states what the libmruby build includes (`device_lib_phrase` overrides it
 #   for the device lib task).
-def define_ios_example(name:, label:, dir:, scheme:, lib_phrase:, device_lib_phrase: lib_phrase)
+def define_ios_example(name:, label:, dir:, scheme:, lib_phrase:, golden:, device_lib_phrase: lib_phrase)
   app_dir        = File.join(ROOT, "examples", "ios", dir)
   proj           = File.join(app_dir, "#{scheme}.xcodeproj")
   bundle         = "com.bash0c7.picoruby.#{scheme}"
@@ -308,7 +319,7 @@ def define_ios_example(name:, label:, dir:, scheme:, lib_phrase:, device_lib_phr
       desc "Observe #{label} launch N times on a frozen Simulator, classifying OK/CRASH (env: SIM_UDID, OBSERVE_N default 5)"
       task :observe do
         app = built_app(derived, "*-iphonesimulator", scheme, "ios:#{name}:build")
-        observe(name, app, bundle)
+        observe(name, app, bundle, golden: golden)
       end
 
       namespace :device do
@@ -340,20 +351,29 @@ def define_ios_example(name:, label:, dir:, scheme:, lib_phrase:, device_lib_phr
   end
 end
 
+# golden: substring `ios:<name>:observe` requires in the console-pty output of a
+# launch (each example's VMExecutor.swift NSLogs "[<Label>] VM opened" after
+# vm_open; repl prints its default snippet's result).
 IOS_EXAMPLES = [
   { name: "repl",      label: "PicoRuby Runner",    dir: "repl",
-    scheme: "PicoRubyRunner",    lib_phrase: "WITH the full-REPL gembox" },
+    scheme: "PicoRubyRunner",    lib_phrase: "WITH the full-REPL gembox",
+    golden: "hello 3" },
   { name: "stackchan", label: "Stack-chan",         dir: "stackchan",
-    scheme: "Stackchan",         lib_phrase: "WITH picoruby-ble + Darwin port" },
+    scheme: "Stackchan",         lib_phrase: "WITH picoruby-ble + Darwin port",
+    golden: "[Stackchan] VM opened" },
   { name: "vperiph",   label: "Virtual Peripheral", dir: "virtual-peripheral",
-    scheme: "VirtualPeripheral", lib_phrase: "WITH picoruby-ble + Darwin port" },
+    scheme: "VirtualPeripheral", lib_phrase: "WITH picoruby-ble + Darwin port",
+    golden: "[VirtualPeripheral] VM opened" },
   { name: "torch",     label: "Torch",              dir: "iphone-torch",
-    scheme: "Torch",             lib_phrase: "WITH picoruby-iphone-torch" },
+    scheme: "Torch",             lib_phrase: "WITH picoruby-iphone-torch",
+    golden: "[Torch] VM opened" },
   { name: "tiltsynth", label: "TiltSynth",          dir: "tilt-synth",
-    scheme: "TiltSynth",         lib_phrase: "WITH the tilt-synth gems" },
+    scheme: "TiltSynth",         lib_phrase: "WITH the tilt-synth gems",
+    golden: "[TiltSynth] VM opened" },
   { name: "net",       label: "Networking",         dir: "networking",
-    scheme: "Networking",        lib_phrase: "WITH picoruby-net (mbedTLS)",
-    device_lib_phrase: "WITH picoruby-net" },
+    scheme: "Networking",        lib_phrase: "WITH picoruby-net-http (mbedTLS)",
+    device_lib_phrase: "WITH picoruby-net-http",
+    golden: "handshake OK" },   # app.rb auto-fetches once at boot (VMExecutor.swift)
 ]
 
 IOS_EXAMPLES.each { |example| define_ios_example(**example) }

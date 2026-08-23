@@ -98,10 +98,13 @@ environment).
 
 ### Verifying behavior: observe / determinism
 
-`rake ios:repl:observe` is the official behavior-verification target: it
+`rake ios:<name>:observe` is the official behavior-verification target: it
 launches the built app on a frozen Simulator `OBSERVE_N` times (env
-`SIM_UDID` / `OBSERVE_N`, default 5) and classifies each run OK (the repl
-example prints `hello 3`) or CRASH (a new crash report or crash signature).
+`SIM_UDID` / `OBSERVE_N`, default 5) and classifies each run OK (the
+example's `golden:` string from `IOS_EXAMPLES` appears in the console-pty
+output — `hello 3` for repl, `[Torch] VM opened` for torch, and so on) or
+CRASH (a new crash report or crash signature). When the frozen Simulator
+UDID is not on this host, the first available iPhone Simulator is used.
 If the runs disagree, it aborts as NON-DETERMINISTIC — that's how an
 uncontrolled input gets caught. This is what turns "same build options ×
 same built code → same behavior" into an enforced property rather than an
@@ -121,9 +124,9 @@ Operational notes:
   `.c` mtime, not on build_config changes, so a stale `.o` is reused and the
   change silently fails to take effect.
 
-Only `ios:repl` is wired up today; the same `define_ios_example` /
-platform-namespace pattern extends to the other iOS examples and, later, to
-watchOS/macOS.
+`observe` is defined for every iOS example (`golden:` per example in the
+Rakefile's `IOS_EXAMPLES`); `determinism` is wired for `ios:repl` only today,
+and the same pattern extends, later, to watchOS/macOS.
 
 ### macOS host
 
