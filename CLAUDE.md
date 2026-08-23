@@ -72,19 +72,28 @@ littlefs / watchdog、`sigint_status` の port 側 storage）を要求する。i
 - Apple 固有の差分（CoreBluetooth、`SecRandomCopyBytes`、tty 無し、sandbox 下の `/dev/urandom`、
   bridge が持つ task HAL）は `PICORB_PLATFORM_DARWIN` + `conf.ports :darwin, :posix` +
   example 固有 gem で吸収する。darwin port を持つ gem は darwin が、持たない gem は posix が選ばれる
-- `conf.ports :darwin, :posix` は port source が要る `conf.gem` より前に書く。mruby の gem loader は
-  `conf.gem` 実行時点の `effective_ports` で port dir を first match で決めるため、後から書いても
-  効かない
-- `picoruby-machine` は reduced config でも `conf.ports` の直後に明示的に追加する。Estalloc heap glue
+- `conf.ports :darwin, :posix` は config block 内のどこに書いても効く。port dir の選択は config 評価後の
+  `gems.setup`（vendor の `Rakefile`）で各 gem の `setup` が `effective_ports` を first match で読む
+  ときに決まり、`conf.gem` は spec を登録するだけで `setup` を呼ばない。置き場所は読み手のための
+  規約で、`picoruby-machine` の `conf.gem` に隣接させる
+- `picoruby-machine` は reduced config でも明示的に追加する。Estalloc heap glue
   （`mrb_basic_alloc_func` / `mrb_open_with_custom_alloc`）がこの gem にあり、upstream は
   `gembox "core"` 経由で常に含めている
 - CrossBuild では first match により darwin port だけが compile されるので、**fork の
   `ports/darwin/` は posix port が提供する symbol をすべて自前で提供する（自己完結）**。
-  `rake smoke` がその受入テスト
+  `rake smoke` がその受入テスト。唯一の例外は mruby VM の task HAL（`mrb_hal_task_init` 等）で、
+  これは host では mruby-task の posix port、iOS/watchOS では `bridge/task_hal_ios.c` が持つ。
+  darwin port の `hal.c` がこれを定義すると archive から引かれた瞬間に二重定義になる
+- POSIX では `picoruby-mruby` が `mruby-io`（`puts` / `print` の提供元）と `mruby-task` を依存に足し、
+  `MRB_BASELINE_PROFILE=1` を build-wide に定義する。非 POSIX なら代わりに
+  `MRB_CONSTRAINED_BASELINE_PROFILE=1` + `MRB_HEAP_PAGE_SIZE=128`。config に profile define を
+  手書きしない（POSIX と矛盾する）
 - define parity: `examples/*/*/project.yml` の `GCC_PREPROCESSOR_DEFINITIONS` と `Rakefile` の smoke
-  defines は build config が実際に渡す define（`picoruby-mruby` が POSIX 時に足す
-  `MRB_BASELINE_PROFILE=1` を含む）と一致させる。`sizeof(mrb_state)` に効く define の不一致は bridge と
-  lib の間でメモリ破壊になる。確認は build log の `CC` 行から `-D` を抽出して突合する
+  defines は build config が実際に渡す define（上記 `MRB_BASELINE_PROFILE=1` を含む）と一致させる。
+  `sizeof(mrb_state)` に効く define の不一致は bridge と lib の間でメモリ破壊になる。確認は
+  `cd vendor/picoruby && rake -v` の build log（compile command が出る）から `-D` を抽出して突合する。
+  watchOS の `build_config/recompile_arm64_32.rb` は config file の define に gem が足す build-wide
+  define を加えて再 compile する — `picoruby-mruby/mrbgem.rake` を変えたらここも追従
 
 ## build-config の命名規約と scope
 

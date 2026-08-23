@@ -187,15 +187,19 @@ bridge/picoruby_bridge.c   ──▶  libmruby.a (iOS arm64)
   opens, so `app.rb` uses classes like `BLE` directly. To make a class
   available to an example, add its gem to that example's build config.
 
-Two gembox shapes coexist, per example. `repl` and `networking` use the
-full-REPL gembox (`mruby-posix` + `core` + `stdlib` + `shell`,
-`conf.ports :darwin, :posix`) — the full Ruby surface at the cost of a larger
-link. The other examples use a reduced gem set without POSIX: core Ruby only —
-no `puts` (the bridge shims it over `print`), no `defined?` / `String#ord` /
-`String#%`. An example that needs more (e.g. `Array#pack`, `sprintf`) adds the
-gem to its own example-scoped build config — see `examples/ios/stackchan`.
-Probe new bundled Ruby against `rake smoke`'s host build before relying on it
-on-device.
+Two gem-set shapes coexist, per example. Both build the VM as a POSIX-family
+Darwin platform — `PICORB_PLATFORM_POSIX` + `PICORB_PLATFORM_DARWIN` with
+`conf.ports :darwin, :posix`, so a gem's `ports/darwin/` is compiled when it
+has one and `ports/posix/` otherwise. `repl` and `networking` use the
+full-REPL gembox (`mruby-posix` + `core` + `stdlib` + `shell`) — the full Ruby
+surface at the cost of a larger link. The other examples use a reduced gem
+set: `conf.picoruby` (its `picoruby-mruby` pulls in `mruby-io` and
+`mruby-task` on POSIX) + `mruby-compiler` + `picoruby-machine` — core Ruby
+with `puts` / `print`,
+but no `stdlib` (`defined?` / `String#ord` / `String#%` are absent). An
+example that needs more (e.g. `Array#pack`, `sprintf`) adds the gem to its own
+example-scoped build config — see `examples/ios/stackchan`. Probe new bundled
+Ruby against `rake smoke`'s host build before relying on it on-device.
 
 ## Vendor fork
 
