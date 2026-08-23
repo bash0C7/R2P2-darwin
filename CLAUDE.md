@@ -43,9 +43,48 @@ darwin/CoreBluetooth port が rp2040(cyw43/btstack) transport の drop-in 代替
 darwin port を選び、rp2040 専用の `cyw43` や、darwin code path が参照しない
 `mbedtls`/`rng` の transitive 依存は引かない。
 
-**Apple 固有のもの（port 選択ロジック・`darwin?` 述語・新規 port の `.c`）は R2P2-darwin 側
-（build_config / `ports/ios/` など）に置く。upstream fork（`picoruby/picoruby` 及びその fork
-`bash0C7/picoruby`、vendor/picoruby）には絶対 commit しない。**
+置き場所の線引き:
+- picoruby の gem に属するもの（各 gem の `ports/darwin/`、`darwin?` 述語、port loader）は
+  fork `bash0C7/picoruby` の `port-darwin` に置く。編集は clone
+  `~/dev/src/github.com/bash0C7/picoruby` から `port-darwin` の worktree を切って行う
+  （`git worktree add .claude/worktrees/port-darwin port-darwin`）。commit は `port-darwin` に
+  直接、topic branch は作らない。push は user 承認。検証は
+  `PICORUBY_REPO=/Users/bash/dev/src/github.com/bash0C7/picoruby PICORUBY_REF=port-darwin rake refresh`
+  で未 push の commit を vendor に流し込んでから R2P2-darwin 側の rake で行う
+- Apple の build 選択（build_config）、C ブリッジ、example 固有 gem（`examples/ios/<name>/picoruby-*`）、
+  SwiftUI アプリは R2P2-darwin に置く
+- `vendor/picoruby` には commit しない。upstream `picoruby/picoruby` へは本 repo から push も PR も
+  しない（fork 側の責務）
+- `port-darwin` は upstream master に対して常に behind 0 を保つ。upstream の変更で本 repo の build が
+  壊れたら、古い SHA に pin して逃げるのではなく、本 repo（build_config / bridge / project.yml）と
+  fork の darwin port を upstream に合わせて直す。影響範囲の大きさは回避の理由にならない
+
+## Platform model — darwin は POSIX ファミリー
+
+upstream picoruby は `PICORB_PLATFORM_POSIX` を「libc / thread / fd / signal を持つ OS 上で動く」
+という能力クラスの印として使い、その無い build には MCU 向けの port 契約（hwclock、GPIO sleep、
+littlefs / watchdog、`sigint_status` の port 側 storage）を要求する。iPhone / Apple Watch / Mac は
+すべて Darwin（XNU + BSD libc）なので POSIX クラスに属する。したがって:
+
+- **本 repo の build config は macOS host / iOS / watchOS すべてで `PICORB_PLATFORM_POSIX` と
+  `PICORB_PLATFORM_DARWIN` を両方定義する。** VM を小さくする目的で POSIX を外すのは不整合を生む
+  最適化であり採らない
+- Apple 固有の差分（CoreBluetooth、`SecRandomCopyBytes`、tty 無し、sandbox 下の `/dev/urandom`、
+  bridge が持つ task HAL）は `PICORB_PLATFORM_DARWIN` + `conf.ports :darwin, :posix` +
+  example 固有 gem で吸収する。darwin port を持つ gem は darwin が、持たない gem は posix が選ばれる
+- `conf.ports :darwin, :posix` は port source が要る `conf.gem` より前に書く。mruby の gem loader は
+  `conf.gem` 実行時点の `effective_ports` で port dir を first match で決めるため、後から書いても
+  効かない
+- `picoruby-machine` は reduced config でも `conf.ports` の直後に明示的に追加する。Estalloc heap glue
+  （`mrb_basic_alloc_func` / `mrb_open_with_custom_alloc`）がこの gem にあり、upstream は
+  `gembox "core"` 経由で常に含めている
+- CrossBuild では first match により darwin port だけが compile されるので、**fork の
+  `ports/darwin/` は posix port が提供する symbol をすべて自前で提供する（自己完結）**。
+  `rake smoke` がその受入テスト
+- define parity: `examples/*/*/project.yml` の `GCC_PREPROCESSOR_DEFINITIONS` と `Rakefile` の smoke
+  defines は build config が実際に渡す define（`picoruby-mruby` が POSIX 時に足す
+  `MRB_BASELINE_PROFILE=1` を含む）と一致させる。`sizeof(mrb_state)` に効く define の不一致は bridge と
+  lib の間でメモリ破壊になる。確認は build log の `CC` 行から `-D` を抽出して突合する
 
 ## build-config の命名規約と scope
 
@@ -55,11 +94,13 @@ Darwin host（`darwin` / `darwin-ble` / `darwin-single`）。
 
 **core と example の scope**: `repl` / `networking` の base iOS build-config
 （`r2p2-picoruby-ios-repl-{sim,device}.rb` / `r2p2-picoruby-ios-net-{sim,device}.rb`）は
-POSIX を有効化した full-REPL gembox（`mruby-posix` + `core` + `stdlib` + `shell`、
-`conf.ports :darwin, :posix`）を使う。`virtual-peripheral` / `iphone-torch` /
-`led-toggle`（`examples/watchos/led-toggle`）は reduced gem set（POSIX なし）のまま、
-それぞれが要る gem（BLE 等）だけを **example 専用の build-config に置く**。共有 base に
-example 固有の依存を足すと、その gem を使わない他 example の app link が未解決シンボルで壊れる。
+full-REPL gembox（`mruby-posix` + `core` + `stdlib` + `shell`）を使う。`virtual-peripheral` /
+`iphone-torch` / `stackchan` / `tilt-synth` / `led-toggle`（`examples/watchos/led-toggle`）は
+reduced gem set（`conf.picoruby` + `mruby-compiler` + `picoruby-machine`、gembox 無し）を base に、
+それぞれが要る gem（BLE 等）だけを **example 専用の build-config に置く**。どちらも
+`PICORB_PLATFORM_POSIX` + `PICORB_PLATFORM_DARWIN` + `conf.ports :darwin, :posix`
+（下記 Platform model）。共有 base に example 固有の依存を足すと、その gem を使わない他 example の
+app link が未解決シンボルで壊れる。
 
 **Darwin host base + ble opt-in**: `r2p2-picoruby-darwin.rb` は Darwin host base
 （`PICORB_PLATFORM_DARWIN` を立て、汎用 POSIX ではなく Darwin host build として compile）。
@@ -81,3 +122,21 @@ picoruby/picoruby が Darwin host 用 build config を取り込めば macOS host
 署名済み・許可済みでも例外なく落ちる。本 repo はバイナリを生成するだけで bundle 化は
 利用側（例: stackchan-picoruby の `pc/stackchan-pico`、`rake pc:app_bundle` + `open -a`）
 の責務。macos.rake にバンドル化タスクを足す必要はない。
+
+## Session の役割分担（model tiering）
+
+本 repo の作業は 3 層で回す。理由: build / clone / 署名の log は長く、main context に流し込むと判断の
+質が落ちる。決定論的な実行と log の読解は安い model で十分であり、高い model は判断に使う。
+
+- **決定論的なコマンド実行は haiku の subagent に委譲する**: build、install、`rake refresh`、
+  tmux での長尺 job の起動と完了待ち、script による file 書換え、git の plumbing。prompt には
+  実行するコマンドを verbatim で渡し、raw output をそのまま返させる。解釈・要約・改変をさせない
+- **log と証拠の解釈は sonnet の subagent に委譲する**: build log / link error / test 出力 /
+  `git log` の読解。事実と推論を分けて報告させ、推奨は求めない
+- **Fable（main）は制御に専念する**: 何を実行するかの決定、report の吟味（「成功」を鵜呑みにせず
+  tool 結果と突合）、scope と plan の管理、user との対話。自分で長い log を読まない
+- 進捗報告は必ず tool 結果に紐づける。未検証のものは未検証と書く。失敗は出力付きでそのまま報告する
+- device 系 rake（`ios:*:device:*` / `watchos:*:device:*`）を tmux や subagent から回すときは
+  UTF-8 locale（`LANG`）と Ruby version（`RBENV_VERSION`）を command 側で明示する。端末名に
+  非 ASCII 文字があると `devicectl` / `xcodebuild -showdestinations` の出力に対する Rakefile の
+  regex が `invalid byte sequence` で落ちる
