@@ -53,7 +53,8 @@ static int test_vm_call_nil_app(void) {
   void *vm = vm_open(boot);
   if (!vm) { printf("FAIL nil_app: vm_open returned NULL\n"); return 1; }
   char *out = vm_call(vm, "anything", "");
-  int bad = (out == NULL) || (strstr(out, "vm_call: $app is nil") == NULL);
+  int bad = (out == NULL) || (strstr(out, "vm_call: $app is nil") == NULL) ||
+            (strstr(out, "NoMethodError") != NULL);  /* the spam it replaces */
   printf("%s nil_app: -> %s", bad ? "FAIL" : "PASS", out ? out : "(null)\n");
   if (bad && out) printf("  (expected to contain: vm_call: $app is nil)\n");
   free(out);

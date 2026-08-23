@@ -12,6 +12,10 @@
 #include "task.h"
 #include "picoruby_bridge.h"
 
+/* Not exposed by the public headers; same forward declaration the vendor
+ * uses in picoruby-sandbox/src/mruby/sandbox.c. */
+void mrb_irep_decref(mrb_state *, struct mrb_irep *);
+
 #ifndef HEAP_SIZE
 /* 8 MB heap; the default 2 MB is insufficient on iOS arm64 where the
  * compiled Ruby VM + compiler + task scheduler has a larger footprint
@@ -201,6 +205,13 @@ char *vm_call(void *vm, const char *method, const char *arg) {
       mrb_value name = mrb_str_new_cstr(mrb, "vm_call");
       mrb_value task = mrc_create_task(cc, irep, name, mrb_nil_value(),
                                        mrb_obj_value(mrb->top_self));
+    /* Drop the compile reference. mrc_load_string_cxt returns the irep with
+     * refcnt=1 owned by the caller, and mrc_create_task's mrb_proc_new took
+     * its own reference; without this decref every vm_call leaks the
+     * compiled one-liner in the fixed 8MB heap (the vendor documents this
+     * ownership contract in picoruby-sandbox/src/mruby/sandbox.c). The GC
+     * frees the irep when it sweeps the closed task's proc. */
+    mrb_irep_decref(mrb, (struct mrb_irep *)irep);
       if (mrb_nil_p(task)) {
         fprintf(stderr, "vm_call: mrc_create_task failed\n");
       } else {
