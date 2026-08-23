@@ -13,6 +13,38 @@ static int check(const char *label, const char *src, const char *needle) {
   return ok ? 0 : 1;
 }
 
+/* Regression test for the vm_call dispatch context: picoruby-ble waits on
+ * Task::Queue#pop, which mruby-task's task_queue.c rejects on the root
+ * context ("blocking pop can only be called from within a task"). vm_call
+ * must therefore run the dispatch inside a task. A 50ms-timeout pop on an
+ * empty queue parks and returns nil in task context; on the root context it
+ * raises instead, so "pop:timeout" only appears when the dispatch ran in a
+ * task. */
+static int test_vm_call_blocking_pop(void) {
+  const char *boot =
+    "class Demo\n"
+    "  def wait(a)\n"
+    "    q = Task::Queue.new\n"
+    "    v = q.pop(timeout_ms: 50)\n"
+    "    if v == nil\n"
+    "      print \"pop:timeout\"\n"
+    "    else\n"
+    "      print \"pop:got\"\n"
+    "    end\n"
+    "  end\n"
+    "end\n"
+    "$app = Demo.new\n";
+  void *vm = vm_open(boot);
+  if (!vm) { printf("FAIL blocking_pop: vm_open returned NULL\n"); return 1; }
+  char *out = vm_call(vm, "wait", "");
+  int bad = (out == NULL) || (strstr(out, "pop:timeout") == NULL);
+  printf("%s blocking_pop: wait -> %s\n", bad ? "FAIL" : "PASS", out ? out : "(null)");
+  if (bad && out) printf("  (expected to contain: pop:timeout)\n");
+  free(out);
+  vm_close(vm);
+  return bad;
+}
+
 static int test_persistent_vm(void) {
   const char *boot =
     "class Demo\n"
@@ -35,6 +67,7 @@ int main(void) {
   fails += check("exception", "raise \"boom\"",        "boom");
   fails += check("syntax",    "1 +",                    "");  /* must not crash */
   fails += test_persistent_vm();
+  fails += test_vm_call_blocking_pop();
   if (fails) { printf("\n%d failure(s)\n", fails); return 1; }
   printf("\nall passed\n");
   return 0;

@@ -14,7 +14,9 @@ char *repl_eval(const char *src);
  * otherwise an opaque handle. vm_call invokes
  * `method` on $app with a single String argument `arg`, returning captured
  * stdout+stderr as a malloc'd string the caller must free() (NULL on setup
- * failure). vm_close tears the VM down. All three MUST be called from one
+ * failure). The dispatch runs inside a mruby-task task (like boot), so the
+ * called method may block on Task::Queue#pop (picoruby-ble's event wait).
+ * vm_close tears the VM down. All three MUST be called from one
  * thread. */
 void *vm_open(const char *boot_src);
 char *vm_call(void *vm, const char *method, const char *arg);
