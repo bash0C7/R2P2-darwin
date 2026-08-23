@@ -5,8 +5,8 @@
 #
 # Device counterpart of r2p2-picoruby-ios-vperiph-sim.rb; see that file for
 # the full rationale on the darwin? fallback, the conf.ports :darwin port
-# selection, and stripping the unused picoruby-mbedtls / picoruby-cyw43
-# dependencies. Differs only in the iphoneos SDK and device version-min flag.
+# selection, and the picoruby-mbedtls / picoruby-cyw43 dependency handling
+# (mbedtls stays; cyw43 drops out via the gem's own darwin guard). Differs only in the iphoneos SDK and device version-min flag.
 
 sdk_path = `xcrun --sdk iphoneos --show-sdk-path`.strip
 clang    = `xcrun --sdk iphoneos --find clang`.strip

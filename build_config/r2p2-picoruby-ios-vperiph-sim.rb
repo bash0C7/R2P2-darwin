@@ -3,9 +3,11 @@
 # (CoreBluetooth) port. EXAMPLE-SCOPED — BLE lives only in this config so
 # every other target's libmruby.a keeps linking without it.
 #
-# picoruby-ble declares add_dependency on picoruby-mbedtls / picoruby-cyw43,
-# which the Darwin BLE path never uses; the conf.gem block below strips them
-# (full rationale there). The cc.defines below are the define set shared by
+# picoruby-ble declares add_dependency on picoruby-mbedtls / picoruby-cyw43.
+# picoruby-mbedtls stays (ble.rb requires it at load; MbedTLS::CMAC backs the
+# GATT database hash); cyw43 is rp2040-only and drops out via the gem's own
+# unless build.darwin? guard (full rationale at the conf.gem block below).
+# The cc.defines below are the define set shared by
 # every cross-build config in this repo; MRB_INT64 / MRB_NO_BOXING in
 # particular fix the mrb_value ABI.
 
