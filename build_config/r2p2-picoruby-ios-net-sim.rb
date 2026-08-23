@@ -1,24 +1,16 @@
 # iOS Simulator (arm64) cross-build for the Networking example: the full-REPL
-# posix?=true VM (identical gembox set to r2p2-picoruby-ios-repl-sim.rb) PLUS the
-# picoruby-net HTTP/TLS stack built against its POSIX port (UNIX sockets + mbedTLS).
-# EXAMPLE-SCOPED — the REPL configs stay networking-free so they keep linking
-# without the socket/TLS surface.
+# posix?=true VM (identical gembox set to r2p2-picoruby-ios-repl-sim.rb) PLUS
+# upstream picoruby's HTTP stack: picoruby-net-http (Net::HTTP) on
+# picoruby-socket (BSD sockets + TLS). EXAMPLE-SCOPED — the REPL configs stay
+# networking-free so they keep linking without the socket/TLS surface.
 #
-# iOS IS POSIX, so picoruby-net's `if build.posix?` branch compiles ports/posix/
-# {dns,tcp_client,tls_client,udp_client,net}.c (standard UNIX network stack) and
-# does NOT pull picoruby-cyw43 (rp2040-only radio). TLS entropy comes from the
-# picoruby-mbedtls + picoruby-rng DARWIN ports (SecRandomCopyBytes), selected over
-# their /dev/urandom posix siblings by `conf.ports :darwin, :posix` and resolved at
-# app link via -framework Security.
-#
-# IMPORTANT — picoruby-net, NOT picoruby-net-http. PicoRuby ships two HTTP stacks:
-#   * picoruby-net      -> Net::HTTPSClient, self-contained mbedTLS TLS via its own
-#                          ports/posix/tls_client.c. No OpenSSL. iOS-friendly.
-#   * picoruby-net-http -> Net::HTTP (CRuby-compatible) but depends on picoruby-socket,
-#                          whose posix SSLSocket links OpenSSL (SSL_connect, ...). iOS
-#                          ships no linkable OpenSSL, so that path leaves unresolved
-#                          OpenSSL symbols. It is the WRONG gem for iOS.
-# picoruby-net keeps TLS entirely on mbedTLS + the darwin entropy port.
+# TLS on iOS: picoruby-socket's posix port links OpenSSL, which iOS does not
+# ship. With `conf.ports :darwin, :posix` the gem's ports/darwin (fork
+# port-darwin) is compiled instead: the same BSD socket code plus an
+# mbedTLS-backed SSLSocket, with entropy from the picoruby-mbedtls /
+# picoruby-rng darwin ports (SecRandomCopyBytes, resolved at app link via
+# -framework Security). macOS host builds set no conf.ports and keep the
+# posix/OpenSSL port.
 
 sdk_path = `xcrun --sdk iphonesimulator --show-sdk-path`.strip
 clang    = `xcrun --sdk iphonesimulator --find clang`.strip
@@ -67,20 +59,11 @@ MRuby::CrossBuild.new("ios-net-sim") do |conf|
   conf.gembox "stdlib"
   conf.gembox "shell"
 
-  # HTTP/TLS over the POSIX net stack. picoruby-net ->
-  # picoruby-mbedtls / picoruby-time / picoruby-pack / picoruby-jwt (resolved by
-  # conf.gem). cyw43 is skipped because build.posix? is true.
-  #
-  # picoruby-net declares add_dependency 'picoruby-pack', which add_conflicts
-  # 'mruby-pack'. The full-REPL gemboxes (core/stdlib) already provide mruby-pack
-  # (Array#pack / String#unpack) — the same surface picoruby-pack reimplements for
-  # the picoruby VM, which is exactly why the two conflict. Strip net's
-  # picoruby-pack declaration so dependency resolution uses the already-present
-  # mruby-pack instead of failing on the conflict.
-  net_gemdir = "#{MRUBY_ROOT}/mrbgems/picoruby-net"
-  conf.gem net_gemdir do |spec|
-    spec.dependencies.reject! { |d| d[:gem] == "picoruby-pack" }
-  end
+  # HTTP over BSD sockets: upstream split picoruby-net into picoruby-net-http
+  # (+ -ntp / -websocket / -mqtt) on top of picoruby-socket; net-http pulls in
+  # picoruby-socket and picoruby-uri itself. The ports chain above makes
+  # picoruby-socket compile its darwin port (mbedTLS SSLSocket, no OpenSSL).
+  conf.gem core: "picoruby-net-http"
 
   # rng/mbedtls darwin ports use SecRandomCopyBytes.
   conf.linker.flags << "-framework" << "Security"

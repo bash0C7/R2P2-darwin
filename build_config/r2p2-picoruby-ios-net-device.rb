@@ -1,12 +1,10 @@
 # iOS device (arm64, iphoneos SDK) cross-build for the Networking example: the
-# full-REPL posix?=true VM PLUS picoruby-net's mbedTLS HTTP/TLS stack.
+# full-REPL posix?=true VM PLUS picoruby-net-http on picoruby-socket.
 #
 # Device counterpart of r2p2-picoruby-ios-net-sim.rb; see that file for the full
 # rationale: iOS-IS-POSIX, the darwin port-chain (conf.ports :darwin, :posix) that
-# gives mbedtls/rng their SecRandomCopyBytes entropy ports, why this uses
-# picoruby-net (mbedTLS, no OpenSSL) rather than picoruby-net-http (OpenSSL via
-# picoruby-socket), and why net's picoruby-pack dependency is stripped (conflicts
-# with the full-REPL mruby-pack).
+# selects picoruby-socket's darwin port (BSD sockets + mbedTLS, no OpenSSL) and
+# gives mbedtls/rng their SecRandomCopyBytes entropy ports.
 
 sdk_path = `xcrun --sdk iphoneos --show-sdk-path`.strip
 clang    = `xcrun --sdk iphoneos --find clang`.strip
@@ -51,12 +49,9 @@ MRuby::CrossBuild.new("ios-net-device") do |conf|
   conf.gembox "stdlib"
   conf.gembox "shell"
 
-  # picoruby-net (mbedTLS). Strip its picoruby-pack dependency (conflicts with the
-  # full-REPL mruby-pack). See the sim config for the full explanation.
-  net_gemdir = "#{MRUBY_ROOT}/mrbgems/picoruby-net"
-  conf.gem net_gemdir do |spec|
-    spec.dependencies.reject! { |d| d[:gem] == "picoruby-pack" }
-  end
+  # picoruby-net-http -> picoruby-socket (darwin port: mbedTLS) + picoruby-uri.
+  # See the sim config for the full explanation.
+  conf.gem core: "picoruby-net-http"
 
   # rng/mbedtls darwin ports use SecRandomCopyBytes.
   conf.linker.flags << "-framework" << "Security"

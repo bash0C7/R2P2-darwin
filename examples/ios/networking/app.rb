@@ -1,9 +1,10 @@
-# Networking — the whole HTTP/TLS round-trip is Ruby. `Net::HTTPSClient` comes from
-# the linked picoruby-net gem; on iOS it dials a raw BSD socket and runs the TLS
-# handshake through mbedTLS (picoruby-net's ports/posix/tls_client.c), seeded by the
-# picoruby-mbedtls/rng DARWIN entropy ports (SecRandomCopyBytes via -framework
-# Security). No OpenSSL and no Apple URL-loading API, so App Transport Security
-# (which only governs NSURLSession/CFNetwork) does not apply.
+# Networking — the whole HTTP/TLS round-trip is Ruby. `Net::HTTP` comes from the
+# linked picoruby-net-http gem on top of picoruby-socket; on iOS the socket gem's
+# darwin port (fork port-darwin) dials a raw BSD socket and runs the TLS
+# handshake through mbedTLS, seeded by the picoruby-mbedtls/rng DARWIN entropy
+# ports (SecRandomCopyBytes via -framework Security). No OpenSSL and no Apple
+# URL-loading API, so App Transport Security (which only governs
+# NSURLSession/CFNetwork) does not apply.
 #
 # vm_call(vm, "fetch", "") invokes $app.fetch and returns whatever this prints
 # (captured stdout), which the UI appends to its log.
@@ -31,11 +32,15 @@ class NetApp
     @fetches += 1
     log "FETCH ##{@fetches}: connecting to #{HOST}:443 …"
     begin
-      response = Net::HTTPSClient.new(HOST).get(PATH)
-      head = response.to_s.split("\r\n\r\n", 2).first.to_s
-      status = head.split("\r\n").first.to_s
-      log "  handshake OK, response received (#{response.to_s.bytesize} bytes)"
-      log "  status: #{status}"
+      http = Net::HTTP.new(HOST, 443)
+      http.use_ssl = true
+      # Demo setting: iOS ships no PEM CA bundle for mbedTLS to verify against,
+      # so the certificate chain is not verified here (see the example README).
+      http.verify_mode = SSLContext::VERIFY_NONE
+      response = http.get(PATH)
+      http.finish
+      log "  handshake OK, response received (#{response.body.to_s.bytesize} bytes)"
+      log "  status: HTTP/#{response.http_version} #{response.code} #{response.message}"
     rescue => e
       log "  error: #{e.class}: #{e.message}"
     end
