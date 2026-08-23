@@ -56,8 +56,13 @@ targets:
           - "$(SRCROOT)/../../../bridge"
         LIBRARY_SEARCH_PATHS:
           - "$(SRCROOT)/Vendor/lib"
+        # -framework Security resolves SecRandomCopyBytes, the entropy source of
+        # the mbedtls / rng Darwin ports picoruby-ble pulls in (ble.rb requires
+        # mbedtls at boot); the staged archive leaves it undefined.
         OTHER_LDFLAGS:
           - "-lmruby"
+          - "-framework"
+          - "Security"
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Advertise a virtual BLE peripheral so a central can connect for testing."
         INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription: "Advertise a virtual BLE peripheral so a central can connect for testing."

@@ -12,6 +12,10 @@
 # is `byte(v) + byte(v >> 8)`, and concatenation is `+`. The bytes produced are
 # identical to what BLE::GattDatabase / BLE::AdvertisingData emit on rp2040.
 
+# picoruby-ble's Ruby layer (BLE#initialize(role), GATT database, advertising
+# data) is a picogem: loaded on require, the C part only defines the constant.
+require "ble"
+
 # The one irreducible primitive: turning an Integer (0..255) into a 1-byte String.
 # Without pack/chr, materialising a byte needs a string that already holds it, so we
 # index this fixed table. `BYTE_TABLE[n & 0xff, 1]` is the pack("C") / chr equivalent.

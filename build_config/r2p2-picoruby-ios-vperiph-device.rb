@@ -65,7 +65,11 @@ MRuby::CrossBuild.new("ios-vperiph-device") do |conf|
 
   conf.cc.include_paths << "#{ble_gemdir}/ports/darwin/ext"
 
-  conf.gem ble_gemdir do |spec|
-    spec.dependencies.reject! { |d| %w[picoruby-mbedtls picoruby-cyw43].include?(d[:gem]) }
-  end
+  # picoruby-ble's mrbgem.rake skips picoruby-cyw43 (rp2040 radio) when
+  # build.darwin? is set. Its picoruby-mbedtls dependency stays: ble.rb does
+  # `require 'mbedtls'` at boot and the GATT database hash uses MbedTLS::CMAC,
+  # so stripping it leaves the BLE Ruby layer unloaded (BLE.new then fails with
+  # "wrong number of arguments"). The mbedtls / rng darwin ports build for iOS
+  # (SecRandomCopyBytes entropy; the app links -framework Security).
+  conf.gem ble_gemdir
 end

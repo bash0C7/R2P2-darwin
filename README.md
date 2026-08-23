@@ -185,10 +185,12 @@ bridge/picoruby_bridge.c   ──▶  libmruby.a (iOS arm64)
   VM and invoke a method on the Ruby global `$app` (every example except
   `repl`). One owner thread touches the VM.
 - `bridge/task_hal_ios.c` — a polling task-scheduler HAL for iOS (no SIGALRM).
-- Gems are linked statically; there is no runtime `require`. Every mrbgem in
-  the build config is compiled into `libmruby.a` and registered when the VM
-  opens, so `app.rb` uses classes like `BLE` directly. To make a class
-  available to an example, add its gem to that example's build config.
+- Gems are linked statically: every mrbgem in the build config is compiled
+  into `libmruby.a`; nothing is fetched at run time. A `picoruby-*` gem's C
+  part is registered when the VM opens, but its Ruby layer is a picogem that
+  loads on `require` (picoruby-require comes with picoruby-machine), so
+  `app.rb` starts with `require "ble"` before subclassing `BLE`. To make a
+  class available to an example, add its gem to that example's build config.
 
 Two gem-set shapes coexist, per example. Both build the VM as a POSIX-family
 Darwin platform — `PICORB_PLATFORM_POSIX` + `PICORB_PLATFORM_DARWIN` with

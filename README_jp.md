@@ -180,9 +180,11 @@ bridge/picoruby_bridge.c   ──▶  libmruby.a (iOS arm64)
   VM に触るのは単一のオーナースレッドだけです。
 - `bridge/task_hal_ios.c` — iOS 用のポーリング型タスクスケジューラ HAL です
   (SIGALRM 不使用)。
-- gem は静的リンクで、実行時 `require` はありません。ビルド設定の mrbgem は
-  すべて `libmruby.a` にコンパイルされ VM 起動時に登録されるため、`app.rb` は
-  `BLE` などのクラスを直接使えます。example にクラスを増やすには、その example
+- gem は静的リンクで、ビルド設定の mrbgem はすべて `libmruby.a` にコンパイルされ、
+  実行時に何かを取得することはありません。`picoruby-*` gem の C 部分は VM 起動時に
+  登録されますが、Ruby 層は picogem として `require` 時に読み込まれる
+  (picoruby-require は picoruby-machine と一緒に入る) ため、`app.rb` は `BLE` を
+  継承する前に `require "ble"` します。example にクラスを増やすには、その example
   のビルド設定に gem を足します。
 
 gembox の形は example ごとに 2 種が併存します。`repl` と `networking` は

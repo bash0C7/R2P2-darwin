@@ -129,6 +129,16 @@ HEX_DIGITS = "0123456789abcdef"
 # Substring matched against the advertised local name to pick the robot.
 STACKCHAN_NAME = "StackChan"
 
+# picoruby-ble's Ruby layer (BLE#initialize(role), scan, connect, ...) is a
+# picogem: the C part defines the BLE constant at boot, the Ruby part loads on
+# require (picoruby-require, pulled in by picoruby-machine). Host CRuby has no
+# such gem, so LoadError means "no BLE here" and the stub below takes over.
+begin
+  require "ble"
+rescue LoadError
+  # host CRuby / a VM without picoruby-ble: BLE_AVAILABLE resolves below
+end
+
 # Is the picoruby-ble `BLE` class linked into this VM? The reduced PicoRuby VM
 # (prism compiler) does not implement the `defined?` keyword — it compiles
 # `defined?(BLE)` as a method call that raises at boot — so probe for the

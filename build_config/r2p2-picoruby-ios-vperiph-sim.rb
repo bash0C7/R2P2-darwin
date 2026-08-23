@@ -84,17 +84,11 @@ MRuby::CrossBuild.new("ios-vperiph-sim") do |conf|
   # port's Swift package ext dir, not next to the .c. Put it on the include path.
   conf.cc.include_paths << "#{ble_gemdir}/ports/darwin/ext"
 
-  # picoruby-ble declares add_dependency 'picoruby-mbedtls' and 'picoruby-cyw43'
-  # (rp2040-only radio). The Darwin C path references neither: src/*.c and
-  # ports/darwin/*.c contain no CYW43_*/MbedTLS_* C symbols — their only mentions
-  # are runtime Ruby `require`s. Dependency resolution would otherwise compile
-  # both gems and their rp2040/posix ports (and their own transitive picoruby-rng /
-  # picoruby-base64), which this build does not produce, yielding undefined
-  # CYW43_*/MbedTLS_*/rng_* symbols the Darwin path never calls. The add_dependency
-  # calls run inside the spec's `setup` (the gem's mrbgem.rake initializer); the
-  # block passed to conf.gem runs LATER in the same setup, after @dependencies is
-  # populated, so strip the two declarations there.
-  conf.gem ble_gemdir do |spec|
-    spec.dependencies.reject! { |d| %w[picoruby-mbedtls picoruby-cyw43].include?(d[:gem]) }
-  end
+  # picoruby-ble's mrbgem.rake skips picoruby-cyw43 (rp2040 radio) when
+  # build.darwin? is set. Its picoruby-mbedtls dependency stays: ble.rb does
+  # `require 'mbedtls'` at boot and the GATT database hash uses MbedTLS::CMAC,
+  # so stripping it leaves the BLE Ruby layer unloaded (BLE.new then fails with
+  # "wrong number of arguments"). The mbedtls / rng darwin ports build for iOS
+  # (SecRandomCopyBytes entropy; the app links -framework Security).
+  conf.gem ble_gemdir
 end

@@ -212,8 +212,12 @@ def observe(name, app, bundle_id, golden:)
       File.basename(f).start_with?("#{process_name}-") && File.mtime(f) >= launched_at
     } : []
     crashed = !new_crashes.empty? || output =~ /EXC_BAD_ACCESS|est_free|remove_free_block/
-    ok = !crashed && output.include?(golden)
-    status = crashed ? :crash : (ok ? :ok : :unknown)
+    # A Ruby exception at boot leaves the VM open (the bridge prints the
+    # backtrace and carries on), so the golden line can still appear; the
+    # backtrace header is the tell.
+    ruby_error = output.include?("trace (most recent call last)")
+    ok = !crashed && !ruby_error && output.include?(golden)
+    status = crashed ? :crash : (ruby_error ? :ruby_error : (ok ? :ok : :unknown))
     detail = crashed && !new_crashes.empty? ? " (new: #{new_crashes.map { |f| File.basename(f) }.join(", ")})" : ""
     puts "run #{i}: #{status}#{detail}"
 
