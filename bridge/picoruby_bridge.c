@@ -25,11 +25,6 @@ extern mrb_state *global_mrb;
 
 typedef struct { mrb_state *mrb; uint8_t *heap; } vm_handle;
 
-/* The reduced VM has core `print` but no `puts`; define puts via print. One
- * physical line so user line numbers shift by exactly 1. */
-static const char *PUTS_SHIM =
-  "def puts(*a); a.each { |x| print x.to_s; print \"\\n\" }; print \"\\n\" if a.empty?; nil; end\n";
-
 static void print_diagnostics(mrc_ccontext *cc) {
   mrc_diagnostic_list *d = cc->diagnostic_list;
   while (d) {
@@ -63,22 +58,16 @@ static void run_irep(mrb_state *mrb, mrc_ccontext *cc, mrc_irep *irep) {
 }
 
 char *repl_eval(const char *src) {
-  /* prepend the puts shim */
-  size_t shim_len = strlen(PUTS_SHIM);
-  size_t src_len = strlen(src);
-  char *combined = (char *)malloc(shim_len + src_len + 1);
-  if (combined == NULL) return NULL;
-  memcpy(combined, PUTS_SHIM, shim_len);
-  memcpy(combined + shim_len, src, src_len + 1);
-
+  /* Source goes to the compiler as-is: the VM is a POSIX-family build, so
+   * mruby-io already provides puts/print and user line numbers are exact. */
   FILE *cap = tmpfile();
-  if (cap == NULL) { free(combined); return NULL; }
+  if (cap == NULL) return NULL;
   fflush(stdout); fflush(stderr);
   int saved_out = dup(1), saved_err = dup(2);
   if (saved_out < 0 || saved_err < 0) {
     if (saved_out >= 0) close(saved_out);
     if (saved_err >= 0) close(saved_err);
-    fclose(cap); free(combined);
+    fclose(cap);
     return NULL;
   }
   dup2(fileno(cap), 1);
@@ -91,7 +80,7 @@ char *repl_eval(const char *src) {
   if (heap == NULL) {
     dup2(saved_out, 1); dup2(saved_err, 2);
     close(saved_out); close(saved_err);
-    fclose(cap); free(combined);
+    fclose(cap);
     return NULL;
   }
   mrb_state *mrb = mrb_open_with_custom_alloc(heap, HEAP_SIZE);
@@ -99,8 +88,8 @@ char *repl_eval(const char *src) {
   if (mrb) {
     mrc_ccontext *cc = mrc_ccontext_new(mrb);
     mrc_ccontext_filename(cc, "main");
-    const uint8_t *u = (const uint8_t *)combined;
-    mrc_irep *irep = mrc_load_string_cxt(cc, &u, strlen(combined));
+    const uint8_t *u = (const uint8_t *)src;
+    mrc_irep *irep = mrc_load_string_cxt(cc, &u, strlen(src));
     if (irep == NULL) {
       print_diagnostics(cc);
     } else {
@@ -121,7 +110,6 @@ char *repl_eval(const char *src) {
   fflush(stdout); fflush(stderr);
   dup2(saved_out, 1); dup2(saved_err, 2);
   close(saved_out); close(saved_err);
-  free(combined);
 
   fseek(cap, 0, SEEK_END);
   long n = ftell(cap);
@@ -142,21 +130,15 @@ void *vm_open(const char *boot_src) {
   mrb_state *mrb = mrb_open_with_custom_alloc(heap, HEAP_SIZE);
   if (mrb == NULL) { free(heap); return NULL; }
   global_mrb = mrb;
-  size_t shim_len = strlen(PUTS_SHIM), src_len = strlen(boot_src);
-  char *combined = (char *)malloc(shim_len + src_len + 1);
-  if (combined == NULL) { mrb_close(mrb); global_mrb = NULL; free(heap); return NULL; }
-  memcpy(combined, PUTS_SHIM, shim_len);
-  memcpy(combined + shim_len, boot_src, src_len + 1);
   mrc_ccontext *cc = mrc_ccontext_new(mrb);
   mrc_ccontext_filename(cc, "main");
-  const uint8_t *u = (const uint8_t *)combined;
-  mrc_irep *irep = mrc_load_string_cxt(cc, &u, strlen(combined));
+  const uint8_t *u = (const uint8_t *)boot_src;
+  mrc_irep *irep = mrc_load_string_cxt(cc, &u, strlen(boot_src));
   if (irep == NULL) {
     /* The boot Ruby is bundled and fixed, so a compile failure is a build-time
      * bug. Treat it as fatal rather than handing back a VM whose $app is nil. */
     print_diagnostics(cc);
     mrc_ccontext_free(cc);
-    free(combined);
     mrb_close(mrb);
     global_mrb = NULL;
     free(heap);
@@ -164,7 +146,6 @@ void *vm_open(const char *boot_src) {
   }
   run_irep(mrb, cc, irep);
   mrc_ccontext_free(cc);
-  free(combined);
   vm_handle *h = (vm_handle *)malloc(sizeof(vm_handle));
   if (h == NULL) { mrb_close(mrb); global_mrb = NULL; free(heap); return NULL; }
   h->mrb = mrb; h->heap = heap;
