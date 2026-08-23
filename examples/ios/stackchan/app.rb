@@ -236,7 +236,7 @@ if BLE_AVAILABLE
         flush_pending
         true
       else
-        print "No Stack-chan found\n"
+        print "No Stack-chan found. Check: robot powered on? Bluetooth on?\n"
         false
       end
     end
@@ -309,14 +309,25 @@ class Stackchan
 
   # Scan/connect/discover/bind the Stack-chan's NUS RX. arg is ignored (vm_call
   # always passes one String). Returns nothing; output is captured via print.
+  # Expected failures (robot absent, BLE layer errors) become a one-line
+  # message here; an uncaught exception would otherwise surface as a raw
+  # backtrace in the Output pane (the bridge's safety net for real bugs).
   def connect(arg = nil)
-    @ble.connect
+    begin
+      @ble.connect
+    rescue => e
+      print "Connect failed: #{e.class}: #{e.message}\n"
+    end
     nil
   end
 
   # Pump BLE events. Posted periodically by the Swift VM-owner thread.
   def tick(arg = nil)
-    @ble.tick
+    begin
+      @ble.tick
+    rescue => e
+      print "tick error: #{e.class}: #{e.message}\n"
+    end
     nil
   end
 

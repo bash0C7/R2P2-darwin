@@ -6,6 +6,8 @@ import SwiftUI
 struct ContentView: View {
     @State private var output: String = "Starting VM…"
     @State private var connected: Bool = false
+    @State private var busy: Bool = false
+    @State private var connectFailed: Bool = false
 
     private let faces = ["neutral", "smile", "joy", "surprised", "sad", "angry"]
     private let ledColors = ["red", "green", "blue", "yellow", "white", "off"]
@@ -16,11 +18,12 @@ struct ContentView: View {
                 Text("Stack-chan Controller").font(.headline)
 
                 HStack {
-                    Button("Connect") { send("connect", "") }
+                    Button("Connect") { connect() }
                         .buttonStyle(.borderedProminent)
-                    Text(connected ? "connected" : "not connected")
+                        .disabled(busy)
+                    Text(statusText)
                         .font(.subheadline)
-                        .foregroundStyle(connected ? .green : .secondary)
+                        .foregroundStyle(statusColor)
                 }
 
                 group("Face") {
@@ -97,12 +100,37 @@ struct ContentView: View {
         }
     }
 
+    private var statusText: String {
+        if busy { return "scanning…" }
+        if connected { return "connected" }
+        if connectFailed { return "connect failed — see Output" }
+        return "not connected"
+    }
+
+    private var statusColor: Color {
+        if connected { return .green }
+        if connectFailed && !busy { return .red }
+        return .secondary
+    }
+
+    // Connect is long-running (the scan blocks the VM thread for up to 30 s):
+    // reflect that immediately, and keep the button single-flight so a second
+    // tap cannot queue another 30 s scan behind the first.
+    private func connect() {
+        busy = true
+        connectFailed = false
+        output = "Scanning for Stack-chan… (up to 30 s)"
+        VMExecutor.shared.call("connect", "") { result in
+            self.output = result.isEmpty ? "(no output)" : result
+            self.connected = result.contains("Connected; RX value_handle bound")
+            self.connectFailed = !self.connected
+            self.busy = false
+        }
+    }
+
     private func send(_ method: String, _ arg: String) {
         VMExecutor.shared.call(method, arg) { result in
             self.output = result.isEmpty ? "(no output)" : result
-            if method == "connect" {
-                self.connected = result.contains("Connected; RX value_handle bound")
-            }
         }
     }
 }

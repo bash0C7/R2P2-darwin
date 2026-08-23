@@ -62,7 +62,11 @@ final class VMExecutor {
             let out = "tick".withCString { m in
                 "".withCString { a in vm_call(vm, m, a) }
             }
+            let result = out.map { String(cString: $0) } ?? ""
             if let out = out { free(out) }
+            // tick output is not UI-worthy, but silently dropping it hid a
+            // recurring per-tick exception once; keep it visible in the log.
+            if !result.isEmpty { NSLog("[Stackchan] tick ->\n%@", result) }
         }
         t.resume()
         self.timer = t
