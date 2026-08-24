@@ -11,52 +11,53 @@ The whole GATT-server behaviour lives in `app.rb`, a `BLE` subclass:
 ```ruby
 class VirtualPeripheral < BLE
   def initialize
-    profile = build_profile
-    super(:peripheral, profile)
+    db = BLE::GattDatabase.new do |gatt|
+      gatt.add_service(GATT_PRIMARY_SERVICE_UUID, HR_SERVICE) do |service|
+        ...
+      end
+    end
+    super(:peripheral, db.profile_data)
 ```
 
 - Ruby owns when to advertise, what each read returns, how a write is answered, and when to notify.
-- It calls the picoruby-ble peripheral API — `advertise`, `push_read_value`, `pop_write_value`, `notify`, `request_can_send_now_event` — and the Darwin port (`ports/darwin/`, see Dependencies) turns those into `CBPeripheralManager` operations.
+- It calls the picoruby-ble peripheral API — `start`, `advertise`, `push_read_value`, `pop_write_value`, `notify`, `request_can_send_now_event` — and the Darwin port (`ports/darwin/`, see Dependencies) turns those into `CBPeripheralManager` operations.
 - Swift in this example is only the VM host (a timer that ticks the VM) and a read-only log view.
 - "What does this BLE device do" is Ruby, exactly as on an rp2040 board: the same `app.rb` and the same picoruby-ble API run on either target; only the port underneath differs (CoreBluetooth here, BTstack on rp2040).
 
-### The tick model
+### The event-loop model
 
-`app.rb` runs in a persistent VM, opened once at launch. There is no blocking `BLE#start` loop; `VMExecutor` runs a 100 ms timer (matching picoruby-ble's `POLLING_UNIT_MS`) that calls `vm_call("tick")`. Each `tick`:
+`app.rb` runs in a persistent VM, opened once at launch. `BLE#start(timeout_ms)` is picoruby-ble's canonical event loop: it powers the radio on, blocks on the internal event queue (legal because the VM bridge dispatches every `vm_call` inside a task), dispatches events, and powers the radio off when the timeout expires. `VMExecutor` calls `vm_call("tick")` continuously; each `tick` is one bounded `start(WINDOW_MS)` window, so the peripheral sits inside the event loop for nearly all wall-clock time. Inside a window:
 
-- `pop_packet` drains one CoreBluetooth event (and, on Darwin, reconciles the read cache / write queue on the VM thread).
-- `packet_callback` branches on the event byte:
-  - `0x60` — radio powered on: advertise the AD data.
+- `packet_callback` receives the port's events and branches on the first byte:
+  - `0x60` — services registered, radio working: advertise the AD data.
   - `0xB5` — MTU exchange complete: a central is present.
   - `0xB7` — CAN_SEND_NOW: push the next HR value and `notify`.
   - `0x05` — central disconnected.
-- `pop_write_value` on the CCCD handle toggles subscribe / unsubscribe.
-- `pop_write_value` on the control handle receives writes to the Heart Rate Control Point.
+- `heartbeat_callback` (~1 Hz) does the steady-state work: `pop_write_value` on the CCCD handle toggles subscribe / unsubscribe, `pop_write_value` on the control handle receives Heart Rate Control Point writes, and while subscribed it paces `request_can_send_now_event` — one notification per heartbeat.
 
-`tick` returns nothing; it `print`s log lines, which `vm_call` returns as captured stdout for the on-screen log.
+Closing a window powers the radio off, which stops CoreBluetooth advertising; the next window re-arms it on the way in (`tick`), so advertising restarts at most once per window. `tick` returns nothing; it `print`s log lines, which `vm_call` returns as captured stdout for the on-screen log.
 
-### PicoRuby builds the profile (no pack/chr)
+### The profile is built with the canonical builders
 
-PicoRuby's `String`/`Array` here do not carry `Array#pack` / `String#<<` / `Integer#chr` — this is PicoRuby, not CRuby. So `app.rb` builds the BTstack ATT-DB `profile_data` and the AD-TLV `adv_data` at runtime with bit-operation equivalents:
+`BLE::GattDatabase` builds the BTstack ATT-DB `profile_data` and `BLE::AdvertisingData` builds the AD-TLV `adv_data` — the same builders rp2040 uses, running on the device at boot. They need `Array#pack` / `String#setbyte` / friends, which the vperiph build configs carry (`mruby-pack`, `mruby-string-ext`, `mruby-sprintf`). ATT handles are read back from `db.handle_table` instead of being hardcoded:
 
-- int to 1-byte string: a slice into a fixed 256-byte table, `BYTE_TABLE[n & 0xff, 1]` — the stand-in for `pack("C")` / `chr` (materialising a byte needs a string that already holds it, so this one literal table is irreducible).
-- 16-bit little-endian: `byte(v & 0xff) + byte((v >> 8) & 0xff)`.
-- concatenation: `+`.
-
-`build_profile` / `build_adv` mirror what `BLE::GattDatabase` / `BLE::AdvertisingData` do (add_service / add_characteristic / add_descriptor, handle assignment, length prefixes), so the bytes are identical to what rp2040 compiles. No offline step, no extra gem — the profile is built in Ruby on the device, as on a board.
+```ruby
+hr = db.handle_table[HR_SERVICE][HR_MEASUREMENT]
+@meas_handle = hr[:value_handle]
+@cccd_handle = hr[CLIENT_CHARACTERISTIC_CONFIGURATION]
+```
 
 ## Changing the published profile
 
-Edit `build_profile` / `build_adv` in `app.rb` directly (services, characteristics, advertised name) and the `HR_*` handle constants.
+Edit the `BLE::GattDatabase.new` block and the `BLE::AdvertisingData.build` block in `app.rb` directly (services, characteristics, advertised name). Handles follow build order automatically via `handle_table`.
 
-- Handles are assigned in build order: service=1, 0x2A37 decl=2, value=3, CCCD=4, 0x2A39 decl=5, value=6.
 - Keep handles at most 255 — the Darwin port's event layout reads them as one byte.
 
 ## Files
 
 The VM bridge and the build configs live at the repo root (`../../../bridge`, `../../../build_config`); this directory is the app, `app.rb`, and the `tools/` helper.
 
-- `app.rb` — the peripheral: `build_profile` / `build_adv` (pack-free runtime builders) plus the live `tick` / `packet_callback` / read / write / subscribe / notify behaviour.
+- `app.rb` — the peripheral: the `GattDatabase` / `AdvertisingData` profile, the per-tick `start` window, and the live `packet_callback` / `heartbeat_callback` / read / write / subscribe / notify behaviour.
 - `Sources/VMExecutor.swift` — one serial thread that owns the VM (`vm_open` / `vm_call`) and the tick timer.
 - `Sources/ContentView.swift` — read-only scrolling log of the printed tick output.
 - `Sources/App.swift` — the `@main` app entry.
@@ -87,7 +88,7 @@ rake ios:vperiph:all          # Simulator pipeline: lib -> gen -> build -> run
 
 ### Device
 
-Before the first device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in `project.yml` with your own Apple Team ID — see [On-device builds](../../../README.md#on-device-builds) for details.
+`project.yml` carries `DEVELOPMENT_TEAM` for device signing — replace it with your own Apple Team ID if you are not this repo's owner; see [On-device builds](../../../README.md#on-device-builds) for details.
 
 ```sh
 rake ios:vperiph:device:all   # connected device: build, sign, install, launch
