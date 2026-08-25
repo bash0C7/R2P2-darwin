@@ -26,13 +26,13 @@ jobs:
         run: echo "sha=$(git ls-remote https://github.com/bash0C7/picoruby.git port-darwin | cut -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Cache vendor/picoruby
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: vendor/picoruby
           key: picoruby-${{ steps.picoruby.outputs.sha }}
 
       - name: Cache build output
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/host
