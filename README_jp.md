@@ -9,14 +9,14 @@ English: [README.md](README.md)
 watchOSの3つ。ESP-IDF側のR2P2-ESP32と並ぶ、[R2P2ハーネス群](#r2p2という系列)の
 Apple担当にあたります。
 
-picoruby を静的ライブラリにクロスビルドし、薄いCブリッジを介してSwiftUIアプリに
+picorubyを静的ライブラリにクロスビルドし、薄いCブリッジを介してSwiftUIアプリに
 リンクします。付属のexampleはアプリの振る舞いをすべてRubyファイル側に置いた構成
 です。PicoRubyはprismコンパイラをVMに焼き込んでいるので、これらのアプリはデバイス
 上で実行時にRubyソースをコンパイルして走らせます。
 
 ## クイックスタート
 
-Appleプラットフォームで PicoRuby が動くまでの最短経路が、iOS Simulator上の`repl`
+AppleプラットフォームでPicoRubyが動くまでの最短経路が、iOS Simulator上の`repl`
 exampleです。Apple Developerアカウントも署名も要りません。
 
 1. フルのXcode.appをインストールし（App Storeから。Command Line Toolsだけでは
@@ -33,7 +33,7 @@ exampleです。Apple Developerアカウントも署名も要りません。
    brew install xcodegen
    ```
 
-3. clone して前提条件を確認します:
+3. cloneして前提条件を確認します:
 
    ```sh
    git clone https://github.com/bash0C7/R2P2-darwin.git
@@ -47,12 +47,12 @@ exampleです。Apple Developerアカウントも署名も要りません。
    rake ios
    ```
 
-`rake ios`は picoruby を`vendor/picoruby`へ取得し、Simulator SDK向けに
+`rake ios`はpicorubyを`vendor/picoruby`へ取得し、Simulator SDK向けに
 `libmruby.a`をクロスビルドし、Xcodeプロジェクトを生成し、アプリをビルドして
 起動します。アプリに`puts "hello #{1 + 2}"`と打ってRunを押すと`hello 3`が
 出ます。コンパイルも実行もアプリ内のPicoRubyがやっています。
 
-初回はサブモジュール込みで picoruby を clone するため約1.2GB、ビルド出力を
+初回はサブモジュール込みでpicorubyをcloneするため約1.2GB、ビルド出力を
 含めると作業ツリーは約3GBになります。Rakefileを動かすのは環境にあるRuby 2.7
 以上なら何でも構いません（rbenv / asdf / システム）。`.ruby-version`は
 バージョンマネージャ向けに4.0.5を固定しています。
@@ -62,18 +62,18 @@ exampleです。Apple Developerアカウントも署名も要りません。
 ### R2P2という系列
 
 R2P2（Ruby Rapid Portable Platform）はPicoRubyのシェルです。ターゲット上で動く
-対話的なRuby環境で、picoruby の中に`picoruby-r2p2` picogemとして存在します。
+対話的なRuby環境で、picorubyの中に`picoruby-r2p2` picogemとして存在します。
 これと足元のVMを、あるプラットフォーム系列のビルドシステムへ載せる仕事は、独立した
 *ハーネス*リポジトリの責務です。
 
-| ハーネス | プラットフォーム系列 | picoruby の入手方法 |
+| ハーネス | プラットフォーム系列 | picorubyの入手方法 |
 |---|---|---|
-| [picoruby/picoruby](https://github.com/picoruby/picoruby)内の`rake r2p2:*` | Raspberry Pi Pico（RP2040 / RP2350） | それ自体が picoruby ツリー |
+| [picoruby/picoruby](https://github.com/picoruby/picoruby)内の`rake r2p2:*` | Raspberry Pi Pico（RP2040 / RP2350） | それ自体がpicorubyツリー |
 | [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) | ESP32系列、ESP-IDF経由 | `components/picoruby-esp32/picoruby`のgit submodule。upstreamのcommitに固定 |
 | **R2P2-darwin**（本リポジトリ） | macOSホスト / iOS / watchOS、Xcode経由 | `rake setup`が`PICORUBY_REF`をgitignore対象の`vendor/picoruby`へclone |
 
 依存の取り方が違うのは意図的です。R2P2-ESP32が必要とするport（`ports/esp32/`）は
-既にupstreamにあるので、submoduleでupstreamを固定できます。R2P2-darwin はそうは
+既にupstreamにあるので、submoduleでupstreamを固定できます。R2P2-darwinはそうは
 いきません。darwin portはこのハーネスと並行して開発されているため、固定された
 submoduleではなく*可変refのfetch*であり、commitせずgitignoreします。その結果
 `PICORUBY_REPO`と`PICORUBY_REF`がESP32側とは違って第一級のつまみになっており、
@@ -84,28 +84,28 @@ R2P2は実質その全体です。Appleプラットフォームにはその枠�
 Xcodeが組み立てる署名済みバンドルだからです。したがって本リポジトリの主たる成果物は
 `libmruby.a`、つまりCブリッジ経由でSwiftUIアプリにリンクする静的ライブラリとしての
 VMであり、単一ファームウェアではなくexampleアプリ群を提供します。R2P2シェルそのものは
-picoruby がネイティブに動くmacOSホスト側に現れます。`rake macos:build`が
+picorubyがネイティブに動くmacOSホスト側に現れます。`rake macos:build`が
 `picoruby-bin-r2p2`実行ファイルをビルドし、`rake macos:run`がそのシェルに入ります。
 
 ### portと、Apple固有glueの置き場所
 
-picoruby の各mrbgemはアーキテクチャ依存のコードを`mrbgems/<gem>/ports/<arch>/`
+picorubyの各mrbgemはアーキテクチャ依存のコードを`mrbgems/<gem>/ports/<arch>/`
 （`rp2040` / `posix` / `esp32` / `darwin`）に分けて持ち、インターフェース
 （`include/*.h`）は全portで完全に同一です。ハーネスがやるのはportの選択であって、
 コアをforkすることではありません。
 
-そのためR2P2-darwin が保持するのは、Apple向けportを選ぶMRubyビルド設定、SwiftとVMを
+そのためR2P2-darwinが保持するのは、Apple向けportを選ぶMRubyビルド設定、SwiftとVMを
 つなぐCブリッジ、そしてexampleアプリです。Apple固有のglueはここに置き、取得した
-picoruby のツリーはpristineに保ってcommitしません。
+picorubyのツリーはpristineに保ってcommitしません。
 
-### darwin はPOSIXプラットフォーム
+### darwinはPOSIXプラットフォーム
 
 iPhoneもApple WatchもMacもDarwin（XNU + BSD libc）で動きます。したがって本
 リポジトリのビルド設定はすべて`PICORB_PLATFORM_POSIX`と
 `PICORB_PLATFORM_DARWIN`を**両方**定義し、`conf.ports :darwin, :posix`を
 設定します。
 
-- `PICORB_PLATFORM_POSIX`は「libc・thread・fd・signalがある」ことを picoruby に
+- `PICORB_PLATFORM_POSIX`は「libc・thread・fd・signalがある」ことをpicorubyに
   伝えます。VMを小さくする目的でこれを外すと、そんな問題を持たないシステムに
   MCU向けのport契約（hwclock、GPIO sleep、littlefs、watchdog）を要求すること
   になります。
@@ -116,12 +116,12 @@ iPhoneもApple WatchもMacもDarwin（XNU + BSD libc）で動きます。した�
   無ければ`ports/posix/`を選びます。判定はgemごとにビルド時に行われます。
 
 ここから直ちに効いてくる帰結が2つあります。darwin portは存在すれば無条件に
-勝つので、各`ports/darwin/`はposix側が提供する symbol をすべて自前で定義する
+勝つので、各`ports/darwin/`はposix側が提供するsymbolをすべて自前で定義する
 必要があります（差分パッチではなく自己完結）。もう1つ、
 `PICORB_PLATFORM_POSIX`が立つことで`picoruby-mruby`が`mruby-io`（`puts`と
-`print`の提供元）と`mruby-task`、そしてbuild-wideの define
-`MRB_BASELINE_PROFILE=1`を追加します。この define は`sizeof(mrb_state)`に
-効くため、Cブリッジも同じ define 集合でコンパイルされねばならず、`project.yml`
+`print`の提供元）と`mruby-task`、そしてbuild-wideのdefine
+`MRB_BASELINE_PROFILE=1`を追加します。このdefineは`sizeof(mrb_state)`に
+効くため、Cブリッジも同じdefine集合でコンパイルされねばならず、`project.yml`
 とビルド設定を同期させているのはそのためです。
 
 ### vendorは1つ、ビルド出力も1箇所
@@ -139,23 +139,23 @@ rake clobber   # clean に加えて vendor/picoruby も削除
 
 | 変数 | 既定値 | 制御対象 |
 |---|---|---|
-| `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picoruby のソースリポジトリ |
-| `PICORUBY_REF` | `port-darwin` | 取得する ref — [vendorの取得元](#vendorの取得元)を参照 |
-| `IOS_MIN` | `17.0` | iOS のdeployment target下限 |
-| `WATCHOS_MIN` | `11.0` | watchOS のdeployment target下限 |
-| `PICORUBY_BLE_GEMDIR` | vendorの`picoruby-ble` | BLE example が使う picoruby-ble の別チェックアウト |
+| `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picorubyのソースリポジトリ |
+| `PICORUBY_REF` | `port-darwin` | 取得するref — [vendorの取得元](#vendorの取得元)を参照 |
+| `IOS_MIN` | `17.0` | iOSのdeployment target下限 |
+| `WATCHOS_MIN` | `11.0` | watchOSのdeployment target下限 |
+| `PICORUBY_BLE_GEMDIR` | vendorの`picoruby-ble` | BLE exampleが使うpicoruby-bleの別チェックアウト |
 | `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | `macos:`ホストタスクのビルド設定 |
 
 ## Example
 
-iOS / watchOS のexampleはいずれもSwiftUIアプリで、振る舞いは`app.rb`にあります。
+iOS / watchOSのexampleはいずれもSwiftUIアプリで、振る舞いは`app.rb`にあります。
 `app.rb`はプレーンテキストのリソースとして同梱され、起動時にアプリ内のprism
 コンパイラがコンパイルします。各exampleに個別のREADMEがあります。
 
 | Example | rake namespace | 何を示すか |
 |---|---|---|
 | [ios/repl](examples/ios/repl/README_jp.md) | `ios:repl`（`ios`だけでも可） | アプリに打ち込んだRubyを実行時に評価する |
-| [ios/networking](examples/ios/networking/README_jp.md) | `ios:net` | picoruby-socket のdarwin port経由の`Net::HTTP` — TLSはmbedTLS、`URLSession`もOpenSSLも使わない |
+| [ios/networking](examples/ios/networking/README_jp.md) | `ios:net` | picoruby-socketのdarwin port経由の`Net::HTTP` — TLSはmbedTLS、`URLSession`もOpenSSLも使わない |
 | [ios/virtual-peripheral](examples/ios/virtual-peripheral/README_jp.md) | `ios:vperiph` | CoreBluetooth上でRubyが書くBLE GATTペリフェラル |
 | [ios/iphone-torch](examples/ios/iphone-torch/README_jp.md) | `ios:torch` | iPhone版の「Lチカ」。ライトをRubyのループで点滅させる |
 | [ios/stackchan](examples/ios/stackchan/README_jp.md) | `ios:stackchan` | NUS経由で[Stack-chan](https://github.com/meganetaaan/stack-chan)を操るBLEセントラル |
@@ -203,7 +203,7 @@ device系タスクは自動署名でビルドします。最初の実機ビル�
 
 ## macOSホスト
 
-macOSでは picoruby は組み込みVMではなくネイティブに動くため、ホスト側タスクは
+macOSではpicorubyは組み込みVMではなくネイティブに動くため、ホスト側タスクは
 アプリではなくバイナリを産出します。出力先は`./build/host/bin`です。
 
 ```sh
@@ -217,7 +217,7 @@ rake macos:single APP=examples/macos/ls/ls.rb   # スクリプトを埋め込ん
 ここではCommand Line Toolsで十分です。Homebrewの`openssl@3`が要るのは、ホスト
 ビルドがnetworking gemboxを含むためだけです。ビルド設定は`MRUBY_CONFIG`で選び
 ます。`r2p2-picoruby-darwin.rb`がホストのベース、
-`r2p2-picoruby-darwin-ble.rb`が picoruby-ble と picoruby-picotest を足したもの、
+`r2p2-picoruby-darwin-ble.rb`がpicoruby-bleとpicoruby-picotestを足したもの、
 `r2p2-picoruby-darwin-single.rb`が`macos:single`の裏で使われます。
 
 BLE設定でビルドしたバイナリは、`./build/host/bin/picoruby`を直接実行する形では
@@ -226,14 +226,14 @@ BLE設定でビルドしたバイナリは、`./build/host/bin/picoruby`を直�
 出しを、署名済み・許可済みであっても例外なく`SIGABRT`で落とします。本リポジトリ
 はバイナリを産出するところまでを担い、それをバンドル化して`open -a`で起動する
 のは利用側の責務です。実例は
-[stackchan-picoruby の`pc/stackchan-pico`](https://github.com/bash0C7/stackchan-picoruby/tree/main/pc/stackchan-pico)
+[stackchan-picorubyの`pc/stackchan-pico`](https://github.com/bash0C7/stackchan-picoruby/tree/main/pc/stackchan-pico)
 にあります。
 
 ## ビルドの検証
 
 安いものから順に4つあります。
 
-**`rake smoke`**は`build_config/r2p2-picoruby-host.rb`で picoruby をホスト
+**`rake smoke`**は`build_config/r2p2-picoruby-host.rb`でpicorubyをホスト
 ビルドし（全iOS設定が出発点とする共通のgem集合とport chainを同じく持ちます）、
 `bridge/smoke_test.c`をリンクして実行します。ブリッジと
 `ports/darwin/machine.c`に対する高速なgateであり、CIが毎pushで回しているのも
@@ -266,7 +266,7 @@ SimulatorはUDID（`SIM_UDID`。既定値はRakefile内）で固定し、コン�
 比較します（コードに関係なく毎回変わる`ar`ヘッダのタイムスタンプは無視）。
 ハッシュが一致すれば、同じ入力が本当に同じオブジェクトを産んだということです。
 
-picoruby のビルドルールから来る運用上の注意が1つ。ビルド設定の define を変えたら
+picorubyのビルドルールから来る運用上の注意が1つ。ビルド設定のdefineを変えたら
 再ビルド前に`rm -rf build/<target>`してください。オブジェクト単位のコンパイル
 ルールは`.c`のmtimeだけを見るので、既存の`.o`が再利用され、define変更が黙って
 効かなくなります。
@@ -315,7 +315,7 @@ BLE系exampleの`app.rb`が`BLE`をサブクラス化する前に`require "ble"`
 
 **フルREPL** — `mruby-posix` + `core` + `stdlib` + `shell`のgembox。Rubyの表面を
 すべて使えますが、リンクは大きくなります。`repl`と`networking`が使います
-（socket / mbedtls / rng の各gemがPOSIX前提の分岐を持つため）。
+（socket / mbedtls / rngの各gemがPOSIX前提の分岐を持つため）。
 
 **縮小版** — `conf.picoruby` + `mruby-compiler` + `picoruby-machine`のみで
 gemboxなし。`puts`と`print`のあるコアRubyですが`stdlib`が無く、`defined?`・
@@ -329,7 +329,7 @@ Estallocのヒープglue（`mrb_basic_alloc_func`、`mrb_open_with_custom_alloc`
 縮小版で足りないexampleは、共有のベースではなく**自分専用の**ビルド設定にgemを
 足します。共有ベースにgemを足すと、そのgemを使わない他のexampleのアプリリンクが
 未解決シンボルで壊れるためです。`virtual-peripheral`と`stackchan`が
-picoruby-ble のRuby層に必要な`mruby-pack`・`mruby-string-ext`・`mruby-sprintf`
+picoruby-bleのRuby層に必要な`mruby-pack`・`mruby-string-ext`・`mruby-sprintf`
 に対して、まさにこれをやっています。exampleに新しいRubyを載せるときは、実機で
 頼る前に`rake smoke`のホストビルドで試してください。
 

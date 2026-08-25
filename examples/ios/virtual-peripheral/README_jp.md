@@ -7,7 +7,7 @@ iPhoneをBLEのGATTペリフェラルとして動かすexampleです。判断は
 応答し、writeを処理し、notifyを流します。BLEセントラルをデバッグしていて実機の
 挙動に依存したくないとき、テスト用スタブとして使えます。
 
-AppleのCoreBluetoothは picoruby-ble のdarwin port経由で駆動します。アプリ側に
+AppleのCoreBluetoothはpicoruby-bleのdarwin port経由で駆動します。アプリ側に
 SwiftのCoreBluetoothコードは1行もありません。
 
 ## しくみ
@@ -29,19 +29,19 @@ class VirtualPeripheral < BLE
 
 - いつアドバタイズするか、各readが何を返すか、writeにどう応えるか、いつnotifyを
   出すかは、すべてRubyが持ちます。
-- Rubyが呼ぶのは picoruby-ble のペリフェラルAPI（`start`、`advertise`、
+- Rubyが呼ぶのはpicoruby-bleのペリフェラルAPI（`start`、`advertise`、
   `push_read_value`、`pop_write_value`、`notify`、
   `request_can_send_now_event`）で、darwin portがそれを
   `CBPeripheralManager`の操作へ変換します。
 - ここでのSwiftはVMのホスト（VMを叩くタイマー）と読み取り専用のログビューだけです。
 - 「このBLEデバイスは何をするのか」はRubyの問いです。rp2040ボード上でもまったく
-  同じで、同じ`app.rb`が同じ picoruby-ble APIに対して動きます。違うのは下の
+  同じで、同じ`app.rb`が同じpicoruby-ble APIに対して動きます。違うのは下の
   portだけ（ここではCoreBluetooth、rp2040ではBTstack）。
 
 ### イベントループ
 
 `app.rb`は起動時に1度開かれる永続VMの中で動きます。`BLE#start(timeout_ms)`が
-picoruby-ble の正統なイベントループで、無線をonにし、内部イベントキューでblockし、
+picoruby-bleの正統なイベントループで、無線をonにし、内部イベントキューでblockし、
 イベントをdispatchし、タイムアウトで無線をoffにします。blockが許されるのは、
 ブリッジがすべての`vm_call`をmrubyのtask内でdispatchするからです。popはroot
 contextでraiseせずスケジューラ上でparkします。
@@ -115,7 +115,7 @@ VMブリッジとビルド設定はリポジトリのルート（`../../../bridg
 
 ## 依存
 
-このexampleには picoruby-ble のCoreBluetooth darwin portが要ります。
+このexampleにはpicoruby-bleのCoreBluetooth darwin portが要ります。
 `ports/darwin/`（BLEのペリフェラル/セントラルport）と、その下の
 `ports/darwin/ext`にある`PicoBLEDarwin` Swiftパッケージ（C portが呼び、アプリが
 リンクする）です。
@@ -125,7 +125,7 @@ VMブリッジとビルド設定はリポジトリのルート（`../../../bridg
 ものはありません。[vendorの取得元](../../../README_jp.md#vendorの取得元)を参照。
 upstreamの`picoruby/picoruby` masterにdarwinのBLE portはありません。
 
-`PICORUBY_BLE_GEMDIR`は picoruby-ble のgemディレクトリだけを差し替えます。vendor
+`PICORUBY_BLE_GEMDIR`はpicoruby-bleのgemディレクトリだけを差し替えます。vendor
 ツリー全体を向け替えずに、そのgemの別チェックアウトで作業したいとき用です。
 
 ## ビルドと実行

@@ -10,10 +10,10 @@ rake macos:single APP=examples/macos/ls/ls.rb   # -> ./build/host/bin/ls
 ./build/host/bin/ls
 ```
 
-できあがるバイナリはVMとgemとスクリプトのバイトコードを抱えており、picoruby の
+できあがるバイナリはVMとgemとスクリプトのバイトコードを抱えており、picorubyの
 インストールも、隣に置く`.rb`ファイルも要りません。
 
-iOSやwatchOSのexampleと違い、ここにアプリもCブリッジもありません。picoruby は
+iOSやwatchOSのexampleと違い、ここにアプリもCブリッジもありません。picorubyは
 macOS上でネイティブに動くので、ホストビルドが直接実行ファイルを産みます。
 [macOSホスト](../../../README_jp.md#macosホスト)を参照してください。
 

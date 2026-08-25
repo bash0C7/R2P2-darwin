@@ -70,7 +70,7 @@ unionの中に詰めずに置かれ、整数は64bitのままです。時計上�
 
 ### arm64_32のアーカイブを作る
 
-picoruby のmrubyビルド（`MRuby::CrossBuild`）は`arm64_32`を直接ターゲットに
+picorubyのmrubyビルド（`MRuby::CrossBuild`）は`arm64_32`を直接ターゲットに
 しません。archフラグを明示しなければホストarchか`arm64`のオブジェクトを吐きます。
 `rake watchos:led:device:lib`が1タスクでその穴を埋めます。
 
@@ -86,19 +86,19 @@ picoruby のmrubyビルド（`MRuby::CrossBuild`）は`arm64_32`を直接ター�
 
 ### ABI defineの単一の真実
 
-`mrb_value`と`mrb_state`のレイアウトを決める define（`MRB_INT64`、
+`mrb_value`と`mrb_state`のレイアウトを決めるdefine（`MRB_INT64`、
 `MRB_NO_BOXING`、`MRB_BASELINE_PROFILE=1`ほか）は3つの別々のコンパイルに読まれ、
 1バイトも違わず一致していなければなりません。食い違うと、最終アーカイブが異なる
 構造体レイアウトのオブジェクトを混ぜ、実行時にメモリを壊します。
 
-| コンパイル | define の出どころ |
+| コンパイル | defineの出どころ |
 |---|---|
-| `rake watchos:led:device:lib`（mruby のオブジェクト） | `build_config/r2p2-picoruby-watchos-device.rb` |
-| `recompile_arm64_32.rb`（arm64_32 のパス） | 自前のリストを持たず、同じビルド設定から`conf.cc.defines`をパースする |
+| `rake watchos:led:device:lib`（mrubyのオブジェクト） | `build_config/r2p2-picoruby-watchos-device.rb` |
+| `recompile_arm64_32.rb`（arm64_32のパス） | 自前のリストを持たず、同じビルド設定から`conf.cc.defines`をパースする |
 | Xcode（`picoruby_bridge.c`とアプリ） | `project.yml`の`GCC_PREPROCESSOR_DEFINITIONS` |
 
 `MRB_BASELINE_PROFILE=1`がビルド設定に書かれていない点に注意してください。設定が
-`PICORB_PLATFORM_POSIX`を立てるので`picoruby-mruby`がこの define をbuild-wideに
+`PICORB_PLATFORM_POSIX`を立てるので`picoruby-mruby`がこのdefineをbuild-wideに
 追加します。`sizeof(mrb_state)`を変えるため、`project.yml`側もこれを写す必要が
 あります。
 

@@ -106,12 +106,12 @@ BLEリンクの両端が実機です。
   `wrong number of arguments`で落ちます。mbedtlsとrngのdarwin portはiOS向けに
   問題なくビルドでき、エントロピーは`SecRandomCopyBytes`から取ります。アプリは
   そのために`-framework Security`をリンクします。
-- **`mruby-string-ext`** — picoruby-ble の`ble_utils.rb`が使う`String#<<`。
+- **`mruby-string-ext`** — picoruby-bleの`ble_utils.rb`が使う`String#<<`。
 - **`mruby-pack`** — 同じく`ble_utils.rb`の`Array#pack`と`require 'pack'`。
 - **`mruby-sprintf`** — `ble_central.rb`のデバッグ用文字列補間が使う
   `Kernel#sprintf`。
 
-このmruby gem 3つは picoruby が同梱するmrubyツリー
+このmruby gem 3つはpicorubyが同梱するmrubyツリー
 （`mrbgems/picoruby-mruby/lib/mruby/mrbgems`）にあり、ディレクトリ指定で取り込み
 ます。rp2040のビルドはPicoRubyの`stdlib` gembox経由でこれらを得ますが、縮小版の
 gem集合はリンクを小さく保つためgemboxを省いています。そこでこのexampleが、共有の

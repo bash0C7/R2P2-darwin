@@ -9,7 +9,7 @@ English: [README.md](README.md)
 PicoRuby VMを起動してボタンのタップを転送するだけです。
 
 これは[virtual-peripheral](../virtual-peripheral/README_jp.md)の設計、つまり
-「Rubyが picoruby のport経由でAppleのフレームワークを駆動する」を、ハードウェアの
+「Rubyがpicorubyのport経由でAppleのフレームワークを駆動する」を、ハードウェアの
 最小プリミティブ（ライト1つのon / off）まで縮めたものです。明るさの制御は対象外
 です。
 
@@ -65,7 +65,7 @@ rake ios:torch:device:run     # 入れ直して起動
 ## gem: `picoruby-iphone-torch/`
 
 `vendor/picoruby`ではなくこのexampleディレクトリに置いたローカルmrbgemです。
-picoruby のportsモデルに従い、インターフェースは`include/`に、アーキテクチャ依存の
+picorubyのportsモデルに従い、インターフェースは`include/`に、アーキテクチャ依存の
 実装は`ports/<arch>/`に置きます。portは`darwin`だけです。
 
 | パス | 役割 |

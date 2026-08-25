@@ -64,7 +64,7 @@ ruby examples/ios/tilt-synth/test_mapping.rb
 ```
 
 このスクリプトは通常gemが供給する`Motion`と`Synth`をスタブに差し替えてマッピングを
-アサートします。[stackchan の`test_frames.rb`](../stackchan/README_jp.md#フレームのコーデック)
+アサートします。[stackchanの`test_frames.rb`](../stackchan/README_jp.md#フレームのコーデック)
 と同じ形です。
 
 ## ビルドと実行

@@ -2,7 +2,7 @@
 
 English: [README.md](README.md)
 
-HTTPS GETの往復すべてをPicoRubyがやるexampleです。`app.rb`は picoruby の
+HTTPS GETの往復すべてをPicoRubyがやるexampleです。`app.rb`はpicorubyの
 `picoruby-net-http` gemの`Net::HTTP`を`picoruby-socket`の上で呼びます。iOSでは
 `picoruby-socket`のdarwin portが生のBSDソケットを開き、TLSハンドシェイクを
 mbedTLSで走らせます。エントロピーは`picoruby-mbedtls`と`picoruby-rng`のdarwin
@@ -15,7 +15,7 @@ OpenSSLは一切関与せず、AppleのURL読み込みAPI（`URLSession`も`CFNe
 ## しくみ
 
 FETCHボタンがSwiftUIからmbedTLSまでの呼び出し連鎖を1本駆動します。ブリッジより
-下はすべてRubyか picoruby-socket のCです。
+下はすべてRubyかpicoruby-socketのCです。
 
 ```
 [SwiftUI の FETCH ボタン]
