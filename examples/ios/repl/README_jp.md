@@ -1,81 +1,96 @@
-# repl — デバイス上で Ruby を評価する
+# repl — デバイス上でRubyを評価する
 
 English: [README.md](README.md)
 
-テキストエディタ・Run ボタン・出力ビューを備えた SwiftUI アプリ
-(`PicoRubyRunner`) です。入力した Ruby をデバイス上でコンパイル・実行し、
-キャプチャした出力を表示します。
+テキストエディタとRunボタンと出力ビューを持つSwiftUIアプリ（`PicoRubyRunner`）
+です。打ち込んだRubyがそのままデバイス上でコンパイル・実行され、捕捉した出力が
+画面に返ってきます。
 
-## 仕組み
+これが入口となるexampleです。素の`ios:*` rakeタスクは`ios:repl:*`のエイリアス
+なので、`rake ios`はこのアプリをビルドして起動します。
 
-この example に同梱の `.rb` はありません。実行される Ruby は、実行時にその場で
-入力したものです。クロスビルドした `libmruby.a` は VM 内に prism コンパイラを
-含むため、ソースは事前コンパイルではなくデバイス上でコンパイル・実行されます。
+## しくみ
 
-Run のたびに bridge 呼び出しが 1 回行われます。
+同梱の`.rb`はありません。Rubyは実行時に打ち込むものです。クロスビルドした
+`libmruby.a`はprismコンパイラをVM内に抱えているので、ソースはMac上で事前に
+ではなく、デバイス自身の上でコンパイルされます。
+
+Run 1回がブリッジ呼び出し1回に対応します。
 
 ```
-ContentView (TextEditor + Run)
-        │  repl_eval(source)            bridge/picoruby_bridge.c
+ContentView（TextEditor + Run）
+        │  repl_eval(source)                  bridge/picoruby_bridge.c
         ▼
-  使い捨ての新規 PicoRuby VM           prism がソースをコンパイルし、VM が実行
-        │  stdout + stderr をキャプチャ  (未捕捉例外はアプリを落とさず
-        ▼                               backtrace 文字列として現れる)
+  使い捨ての新しい PicoRuby VM                prism がソースをコンパイルし VM が実行
+        │  捕捉した stdout + stderr           未捕捉例外はアプリを落とさず
+        ▼                                     バックトレースとして印字される
   出力ビューに表示される String
 ```
 
-- `repl_eval(const char *src)` (`../../../bridge/picoruby_bridge.h`) は新規 VM を
-  開いて `src` をコンパイル・実行し、キャプチャした stdout+stderr を malloc した
-  文字列として返します。コンパイル診断や未捕捉例外の backtrace も含まれ、
-  解放は呼び出し側の責務です。
-- Run ごとに新しい VM を使うため、各評価はクリーンな状態から始まります。
-- `ContentView.run()` はこれを background thread で呼び、返された文字列を
-  free します。NULL が返った場合 (アロケーション/セットアップ失敗) は
-  `(VM failed to start)` と表示します。
+- `repl_eval(const char *src)`（宣言は`../../../bridge/picoruby_bridge.h`）は
+  新しいVMを開き、`src`をコンパイル・実行し、stdoutとstderrに書かれたすべて
+  （コンパイル診断と未捕捉例外のバックトレースを含む）をmalloc済み文字列で
+  返します。解放は呼び出し側の責務です。
+- ソースは1バイトも足さずにコンパイラへ渡されるので、診断に出る行番号は打ち
+  込んだものと一致します。`puts`と`print`はPOSIX系ビルドに含まれる`mruby-io`
+  由来で、shimは挿入されません。
+- 出力の捕捉は、呼び出しの間だけファイルディスクリプタ1と2を一時ファイルへ
+  リダイレクトする方式です。したがってRubyレベルの`print`だけでなく、VMやC gem
+  が書いたものも捕まります。
+- Runごとに新しいVMなので、評価は毎回まっさらな状態から始まります。VMのヒープは
+  呼び出しごとに確保され、戻るときに丸ごと解放されます。
+- `ContentView.run()`はこれをバックグラウンドスレッドで呼び、返った文字列を
+  解放します。NULLが返った場合（確保失敗またはVM初期化失敗）は
+  `(VM failed to start)`と表示します。
 
-## ファイル構成
+このアプリはonAppear時にも1度実行するので、起動しただけで既定スニペットの結果が
+出ています。`rake ios:repl:observe`が起動時のコンソール出力から`hello 3`を
+確認できるのはそのためです。
 
-Ruby VM・bridge・build config はリポジトリルート (`../../../bridge`、
-`../../../build_config`) にあり、このディレクトリはアプリ本体だけを持ちます。
+## ファイル
 
-- `Sources/App.swift` — `@main` のアプリエントリです。`WindowGroup` を 1 つ持ちます。
-- `Sources/ContentView.swift` — エディタ + Run + 出力ビューです。`repl_eval` を呼びます。
-- `Sources/PicoRubyRunner-Bridging-Header.h` — C bridge を Swift に公開します。
-- `project.yml` — xcodegen プロジェクトです。bridge のソースをコンパイルし、
-  `Vendor/lib` に stage された `libmruby.a` を `-lmruby` でリンクします。
+VM・Cブリッジ・ビルド設定はリポジトリのルート（`../../../bridge`、
+`../../../build_config`）にあります。このディレクトリにあるのはアプリだけです。
+
+- `Sources/App.swift` — `@main`のエントリポイント。`WindowGroup`が1つ。
+- `Sources/ContentView.swift` — エディタ・Runボタン・出力ビュー。`repl_eval`を呼ぶ。
+- `Sources/PicoRubyRunner-Bridging-Header.h` — CブリッジをSwiftへ公開する。
+- `project.yml` — xcodegenのプロジェクト定義。ブリッジのソースをコンパイルし、
+  `Vendor/lib`に配置された`libmruby.a`へ`-lmruby`でリンクする。
+
+`Vendor/`は`rake ios:lib`が生成するもので、ソースディレクトリではありません。
 
 ## ビルドと実行
 
-iOS Simulator と接続した実機の両方で動きます。
-
-素の `ios:*` タスクは `ios:repl:*` の alias なので、`rake ios` がこのアプリを
-ビルドします。
-
 ### Simulator
 
+```sh
+rake ios          # lib -> gen -> build -> run
 ```
-rake ios                  # Simulator: lib -> gen -> build -> run (headless)
-```
+
+式を打ち込んでRunを押します。
 
 ### 実機
 
-初回の実機ビルドの前に、`project.yml` の `DEVELOPMENT_TEAM: YOUR_TEAM_ID` を
-自分の Team ID に置き換えてください。詳細は
-[実機ビルド](../../../README_jp.md#実機ビルド) を参照してください。
+最初の実機ビルドの前に、`project.yml`の`DEVELOPMENT_TEAM: YOUR_TEAM_ID`を自分の
+Team IDに置き換えてください。詳細は
+[実機で動かす](../../../README_jp.md#実機で動かす)を参照。
 
+```sh
+rake ios:device:all
 ```
-rake ios:device:all       # 接続済み・署名済みデバイス: lib -> gen -> build -> run
-```
 
-## 既知の制約
+## 使えるRubyの範囲
 
-VM は `build_config/r2p2-picoruby-ios-repl-{sim,device}.rb` によって full-REPL
-gem set でビルドされるため、`core`/`stdlib` の Ruby サーフェスをフルに使えます。
+このexampleは`build_config/r2p2-picoruby-ios-repl-{sim,device}.rb`がフルREPLの
+gem集合でビルドします。`core`と`stdlib`の表面がすべて揃っており、本リポジトリの
+exampleの中では最も広い範囲です。
 
-- gembox: `mruby-posix` + `core` + `stdlib` + `shell`。gem ごとに Darwin port を
-  POSIX 版より優先して選択します (`conf.ports :darwin, :posix`)。
-- networking 系 gem と OpenSSL はこの build config から除外されています。
-- bridge は毎回の評価の先頭に、core の `print` で定義した 1 行の `puts` shim を
-  付加します。物理 1 行なので、診断メッセージの行番号は入力からちょうど 1 だけ
-  ずれます。
-- 全体像はリポジトリ README の "Constraints worth knowing" を参照してください。
+- gembox: `mruby-posix` + `core` + `stdlib` + `shell`。portはposix兄弟より
+  darwinを優先します（`conf.ports :darwin, :posix`）。
+- `minimum` gemboxは**使いません**。POSIX分岐がホスト専用バイナリ
+  （`mruby-bin-mrbc`、`picoruby-bin-picoruby`）を引き込みますが、クロスビルドは
+  それを産出できないためです。代わりに`mruby-compiler`を直接足しています。
+- networking系gemとOpenSSLは外してあります。RubyからHTTPとTLSを使う話は、
+  socketとmbedTLSのスタックをリンクする
+  [networking example](../networking/README_jp.md)にあります。

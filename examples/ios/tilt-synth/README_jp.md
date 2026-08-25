@@ -1,125 +1,125 @@
-# Tilt Synth — Ruby が駆動する Device Motion FM シンセサイザー
+# tilt-synth — RubyがDevice Motionから鳴らすFM音源
 
 English: [README.md](README.md)
 
-iPhone を傾けると Ruby が音を変える技術 PoC です。`app.rb` が
-`picoruby-iphone-motion` gem の Darwin port を通じて Device Motion の
-attitude (pitch/roll) を読み取り、pitch を 2 オクターブの C major pentatonic
-scale に量子化、roll を FM depth に写像し、`picoruby-iphone-synth` gem の
-Darwin port を通じて `AVAudioEngine` の sine+FM オシレーターを駆動します。
-両 gem の Swift backend に音楽的な mapping ロジックは一切なく、スケール・
-レンジ・tick ループはすべて `app.rb` にあります。構成は picoruby-ot の
-`otmeiwa.rb` (センサー読み取り) + `web/` (センサーから音楽への mapping) の
-ペアを、シリアルリンクもブラウザも外部センサーボードも無しで 1 つのネイティブ
-iOS アプリに畳み込んだものです。
+iPhoneを傾けると鳴ります。`app.rb`が`picoruby-iphone-motion` gemのdarwin port
+経由でDevice Motionの姿勢（pitchとroll）を読み、pitchを2オクターブのCメジャー
+ペンタトニックへ量子化し、rollをFMの深さへマップして、
+`picoruby-iphone-synth` gemのdarwin port経由で`AVAudioEngine`のsine + FM
+オシレータを駆動します。
 
-## 仕組み
+どちらのgemのSwiftバックエンドにも音楽的なロジックはありません。音階も範囲も
+tickループも、すべてRuby側にあります。
 
-常駐する PicoRuby VM が `app.rb` を起動し (`$app = TiltSynthApp.new` が
-Synth を start します)、以後 `VMExecutor` が単一の VM スレッド上で 20 Hz の
-`tick` を呼び続けます。
+## しくみ
+
+永続VMが`app.rb`を起動し、`$app = TiltSynthApp.new`が代入されてsynthが始まります。
+以後`VMExecutor`が単一のVMスレッド上で50msごと（20Hz）に`tick`を呼びます。
 
 ```
-[CMDeviceMotion attitude]
-  --> ports/darwin/motion.c   (Swift @c: pmotion_available/pmotion_pitch/pmotion_roll)
-  --> include/motion.h        (port ABI)
-  --> src/mruby/motion.c      (Motion class)
+[CMDeviceMotion の attitude]
+  --> ports/darwin/motion.c   Swift @c: pmotion_available / pmotion_pitch / pmotion_roll
+  --> include/motion.h        port ABI
+  --> src/mruby/motion.c      Motion クラス
 
-app.rb tick:
-  note  = quantize(pitch)                          # -30..+30 deg -> PENTATONIC_SCALE の最寄りステップ
-  depth = clamp((roll + 45.0) / 90.0, 0.0, 1.0)    # -45..+45 deg -> FM depth
+app.rb#tick:
+  note  = quantize(pitch)                          # -30..+30 度 -> 最寄りのペンタトニック段
+  depth = clamp((roll + 45.0) / 90.0, 0.0, 1.0)    # -45..+45 度 -> FM の深さ
   @synth.note = note
   @synth.fm_depth = depth
 
 [Synth#note= / #fm_depth= / #start / #stop]
-  --> ports/darwin/synth.c    (Swift @c: psynth_start/psynth_stop/psynth_set_note/psynth_set_fm_depth)
-  --> Swift PicoSynthDarwin: AVAudioEngine + AVAudioSourceNode (sine + FM)
+  --> ports/darwin/synth.c    Swift @c: psynth_start / psynth_stop /
+                              psynth_set_note / psynth_set_fm_depth
+  --> PicoSynthDarwin（Swift）: AVAudioEngine + AVAudioSourceNode（sine + FM）
   --> スピーカー
 ```
 
-- ボタンはありません。tick タイマー (つまり synth) は VM 起動の瞬間から
-  動き続けます。`virtual-peripheral` の poll tick と同じ常時稼働モデルです。
-- SwiftUI の view は音楽ロジックを持ちません。`app.rb` が print するログ行を
-  表示し、最新の行から pitch/roll を読み取って 2 本のゲージに反映するだけです。
+- ボタンはありません。tickタイマー、したがってsynthは、VM起動の瞬間から動き
+  続けます。[virtual-peripheral](../virtual-peripheral/README_jp.md)のpoll tickと
+  同じ常時稼働の形です。
+- SwiftUIのビューは音楽ロジックを持ちません。`app.rb`がprintしたログ行を表示し、
+  最新行からpitchとrollを取り出して2つのゲージを動かすだけです。
 
-## gem 構成
+## 2つのgem
 
-どちらもローカルの mrbgem で (`vendor/picoruby` には入っていません)、
-`picoruby-iphone-torch` と同じ `include/` + `src/` + `ports/darwin/` +
-Swift package の構造です。gem としての依存宣言は持たず、`pmotion_*` /
-`psynth_*` の Swift シンボルはアプリのリンク時に解決されます。
+どちらも`vendor/picoruby`ではなくこのexampleディレクトリに置いたローカルmrbgem
+で、[picoruby-iphone-torch](../iphone-torch/README_jp.md)と同じ
+`include/` + `src/` + `ports/darwin/` + Swiftパッケージの構成です。どちらもgemの
+依存を宣言せず、`pmotion_*`と`psynth_*`のSwiftシンボルは`libmruby.a`内では未定義
+のまま、アプリのリンク時に解決されます。
 
-- `picoruby-iphone-motion/` — CMDeviceMotion の attitude.pitch/roll を
-  `Motion#pitch` / `#roll` / `#available?` として公開
-- `picoruby-iphone-synth/` — AVAudioEngine の sine+FM オシレーターを
-  `Synth#note=` / `#fm_depth=` / `#start` / `#stop` として公開
+- `picoruby-iphone-motion/` — `CMDeviceMotion`の姿勢を`Motion#pitch` /
+  `#roll` / `#available?`として公開。
+- `picoruby-iphone-synth/` — `AVAudioEngine`のsine + FMオシレータを
+  `Synth#note=` / `#fm_depth=` / `#start` / `#stop`として公開。
 
-## Xcode なしで mapping ロジックをテストする
+## Xcode抜きでマッピングを試す
 
-quantize/clamp の計算はホストの CRuby でそのまま動きます。実機もビルドも
-Xcode も不要です。
+量子化とクランプの計算はただのRubyなので、デバイスもビルドもXcodeも無しに
+ホストCRubyで走ります。
 
 ```sh
 ruby examples/ios/tilt-synth/test_mapping.rb
 ```
 
-- 通常は gem が提供する `Motion`/`Synth` をスタブに差し替え、quantize/clamp
-  の計算を検証します。`examples/ios/stackchan/test_frames.rb` と同じ
-  パターンです。
+このスクリプトは通常gemが供給する`Motion`と`Synth`をスタブに差し替えてマッピングを
+アサートします。[stackchan の`test_frames.rb`](../stackchan/README_jp.md#フレームのコーデック)
+と同じ形です。
 
 ## ビルドと実行
 
-前提: フルの `Xcode.app`、iOS SDK、`xcodegen` (`rake check` で確認できます)。
+前提はフルの`Xcode.app`、iOS SDK、`xcodegen`です。`rake check`で確認できます。
 
 ### Simulator
 
 ```sh
-rake ios:tiltsynth:all     # libmruby.a の cross-build -> xcodegen -> build -> 起動
+rake ios:tiltsynth:all     # lib -> gen -> build -> run
 ```
 
-- Simulator に Device Motion はありません。アプリは起動し VM も動きますが、
-  `Motion#available?` が `false` のため、`initialize` が一度きりの status 行
-  "ready: no device motion (Simulator?) -- tick will no-op" をキューに積みます。
-  この行がログに現れるのは最初の tick です (`flush_log` は `tick` の中で走り、
-  `VMExecutor` が capture するのは `vm_call` の stdout だけで、`vm_open` の分は
-  拾わないため)。音は鳴りません。
-- この target はビルドがリンクでき VM が動くことの確認用です。torch を
-  持たない `iphone-torch` の Simulator target と同じ位置づけです。
+SimulatorにDevice Motionはありません。アプリは起動しVMも動きますが、
+`Motion#available?`が偽になるので`initialize`が一度きりの状態行
+`ready: no device motion (Simulator?) -- tick will no-op`をキューします。この行が
+起動時ではなく最初のtickで表に出るのは、`flush_log`が`tick`の中で走り、
+`VMExecutor`が捕捉するのは`vm_call`のstdoutだけで`vm_open`のものではないから
+です。以後アプリは黙ります。このターゲットで確認できるのはビルドがリンクしVMが
+動くことまでで、ライトの無い`iphone-torch`におけるSimulatorと同じ役割です。
 
-### 実機 (実際に傾けて音を出す)
+### 実機
 
-初回は `project.yml` の `DEVELOPMENT_TEAM: YOUR_TEAM_ID` を自分の Team ID に
-置き換えてください。詳細は [実機ビルド](../../../README_jp.md#実機ビルド) を
-参照してください。
+最初の実機ビルドの前に、`project.yml`の`DEVELOPMENT_TEAM: YOUR_TEAM_ID`を自分の
+Team IDに置き換えてください。詳細は
+[実機で動かす](../../../README_jp.md#実機で動かす)を参照。
 
 ```sh
-rake ios:tiltsynth:device:all   # 接続済みで署名可能な iOS 実機が必要
+rake ios:tiltsynth:device:all   # 接続済み・署名済みのiPhoneが要る
 ```
 
-- 実機の iPhone では、前後に傾けると pitch がペンタトニックの離散ステップで
-  変わり、左右に傾けると FM depth (音色) が変わります。
-- これを耳と目で確かめるのは手動の手順です。この repo に実機上の自動テストは
-  ありません。
+端末を前後に傾けるとpitchがペンタトニックの段を移り、左右に傾けるとFMの深さ、
+つまり音色が変わります。これを耳で確かめるのは手作業です。実機での音声の自動
+テストはここにはありません。
 
-## 個別の rake タスク
+## 個別タスク
 
-pipeline の各段階は単独の task としても実行できます。
+| タスク | 内容 |
+|---|---|
+| `rake ios:tiltsynth:lib` | 両gem込みでSimulator SDK向けに`libmruby.a`をクロスビルドし`Vendor/`へ配置 |
+| `rake ios:tiltsynth:gen` | `project.yml`から`TiltSynth.xcodeproj`を生成 |
+| `rake ios:tiltsynth:build` | Simulator向けにビルド |
+| `rake ios:tiltsynth:run` | Simulatorを起動しインストールしてlaunch |
+| `rake ios:tiltsynth:observe` | 固定Simulatorで繰り返し起動し各runを分類 |
+| `rake ios:tiltsynth:device:lib` | device SDK（iphoneos arm64）向けに`libmruby.a`をクロスビルド |
+| `rake ios:tiltsynth:device:check` | 署名なしでgeneric device向けにリンク（実機不要） |
+| `rake ios:tiltsynth:device:build` | 接続済みデバイス向けに署名してビルド |
+| `rake ios:tiltsynth:device:run` | 接続済みデバイスにインストールしてlaunch |
+| `rake ios:tiltsynth:device:all` | 実機パイプライン一式 |
 
-- `rake ios:tiltsynth:lib` — 両 gem を含む `libmruby.a` を Simulator 向けに
-  cross-build し `Vendor/` に配置
-- `rake ios:tiltsynth:gen` — `project.yml` から `TiltSynth.xcodeproj` を生成
-- `rake ios:tiltsynth:build` — Simulator 向けにアプリをビルド
-- `rake ios:tiltsynth:run` — Simulator を起動し、インストールして launch
-- `rake ios:tiltsynth:device:lib` — 実機 SDK (iphoneos arm64) 向けに
-  `libmruby.a` を cross-build
-- `rake ios:tiltsynth:device:build` — 接続済み実機向けに署名付きでビルド
-- `rake ios:tiltsynth:device:run` — 接続済み実機にインストールして launch
+## スコープ
 
-## 既知の制約
+これは音楽的マッピングをRubyに置くという主張のPoCであり、意図的にそこで止めて
+います。
 
-この PoC は以下を意図的にスコープ外としています。
-
-- GPS 高度 / 気圧計は使いません。
-- 連続的なポルタメントはありません (離散的なスケール量子化のみ)。
-- スケール切替 UI・マイク入力・録音はありません。
-- rp2040/esp32 port はありません。
+- GPS高度や気圧センサの入力は無し。
+- 連続的なポルタメントは無し（音階は離散的に量子化される）。
+- 音階切り替えUI・マイク入力・録音は無し。
+- 2つのgemのrp2040 / esp32 portは無し。

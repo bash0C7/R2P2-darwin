@@ -1,18 +1,17 @@
-# led-toggle — Ruby で書いた LED 点滅を Apple Watch で動かす
+# led-toggle — Apple Watch上で、RubyのLチカ
 
 English: [README.md](README.md)
 
-組み込みの「hello world」といえば LED の点滅です。Apple Watch には LED がないので、
-この example では画面上の赤と青の円を LED に見立て、タップで切り替えます。
-「いまどちらの色か」「タップでどう反転するか」という状態機械は `app.rb` にあり、
-watch 上の PicoRuby VM で動きます。
+組み込みのhello worldはLEDの点滅です。Apple WatchにLEDは無いので、このexampleは
+画面上に代役を置きます。タップで切り替わる赤か青の円です。どちらの色が点いていて、
+タップがそれをどう変えるかは`app.rb`にあり、時計自身の上のPicoRuby VMで動きます。
 
-watchOS 単体アプリ (`WKWatchOnly`) として、実機の Apple Watch (`arm64_32`) と
-watchOS Simulator の両方に向けてビルドします。
+watchOSの単独アプリ（`WKWatchOnly`）で、実機のApple Watch（`arm64_32`）と
+watchOS Simulatorの両方向けにビルドします。
 
-## 仕組み
+## しくみ
 
-LED の状態機械は `app.rb` にある素の Ruby オブジェクトです。
+状態機械は`app.rb`、ただのRubyオブジェクトです。
 
 ```ruby
 class LEDApp
@@ -34,126 +33,144 @@ $app = LEDApp.new
 puts "booted"
 ```
 
-色のロジックを Swift は一切持ちません。Swift は VM をホストして結果を中継するだけです。
+Swiftは色のロジックを1つも持たず、VMをホストして結果を中継するだけです。
 
 ```
-ContentView (赤と青の円の Text, .onTapGesture)
+ContentView（赤/青の円 Text、.onTapGesture）
         │
-        ├─ .onAppear ──> VMExecutor.start ──> vm_open(app.rb)      永続 VM を 1 つ
+        ├─ .onAppear ──> VMExecutor.start ──> vm_open(app.rb)   永続 VM 1つ
         │                                       LEDApp.new, $app
         │
-        ├─ 0.1s timer ──> vm_call($app, "tick")   ──> "red"/"blue" ──> Text を更新
-        └─ tap        ──> vm_call($app, "toggle") ──> @state を反転し新しい色を返す
+        ├─ 0.1s タイマー ──> vm_call($app, "tick")   ──> "red"/"blue" ──> Text を更新
+        └─ タップ         ──> vm_call($app, "toggle") ──> @state を反転し新しい色を返す
 ```
 
-`@state == "red" ? "blue" : "red"` を評価するのは watch 上の mruby VM で、Swift が
-描画する色は Ruby が返した値そのものです。`vm_call` は Ruby のグローバル `$app` の
-メソッドを呼び出し、そのメソッドが `print` した出力を文字列として返します。
-`VMExecutor` がそれを SwiftUI の `@State` に反映し、赤と青の円のどちらを表示するかが
-決まります。
+`@state == "red" ? "blue" : "red"`を評価するのは時計上のmruby VMです。したがって
+Swiftが描く色は、文字通りRubyが返したものです。`vm_call`はRubyのグローバル`$app`の
+メソッドを呼び、そのメソッドが`print`した内容を文字列として返します。
+`VMExecutor`はそれを、円を選ぶSwiftUIの`@State`へ写します。
 
-## エンジニアリングノート
+## 技術的な要点
 
-SwiftUI の下にあるのは、PicoRuby VM を実機の Apple Watch でリンクして動かす作業
-です。watch の CPU ABI は Apple の他のどの製品とも異なります。
+ここでSwiftUIより下にある仕事はすべて、PicoRuby VMを実機のApple Watch上でリンク
+させ動かすためのものです。この機種のCPU ABIはAppleの他のどの製品とも違います。
 
-### arm64_32 — 64-bit コア上の 32-bit ポインタ ABI
+### arm64_32 — 64bitコア上の32bitポインタ
 
-実機の Apple Watch (Series 4 以降) は `arm64_32` (ILP32) で動きます。レジスタは
-ARM64 ですが、ポインタは 32-bit です。Apple silicon Mac 上の Simulator は通常の
-64-bit `arm64` なので、Simulator で動いても実機で動く保証にはなりません。この ILP32
-環境が壊すのが、まさに `mrb_value` のメモリ表現です。
+実機のApple Watch（Series 4以降）は`arm64_32`、すなわちILP32で動きます。ARM64の
+レジスタに32bitのポインタです。AppleシリコンMac上のSimulatorは普通の64bit
+`arm64`なので、Simulatorが緑でも時計については何も証明しません。
 
-- word boxing / NaN boxing はタグとポインタを 1 machine word に詰め込み、64-bit
-  ポインタを前提とします。`arm64_32` ではどちらも成立しません。
-- そのためこのビルドは `MRB_NO_BOXING` + `MRB_INT64` を使います。`mrb_value` は
-  struct (union + type tag) になり、32-bit ポインタはそのまま union に収まり、整数は
-  64-bit のままです。watch 上で正しく動く boxing の選択はこれだけです。
+ILP32が壊すのは、まさに`mrb_value`のメモリ表現です。word boxingもNaN boxingも、
+タグとポインタを1つのマシンワードに詰め、そのワードが64bitポインタを保持すると
+仮定します。`arm64_32`ではどちらも成立しません。このビルドは`MRB_NO_BOXING`と
+`MRB_INT64`を使います。`mrb_value`は構造体（unionと型タグ）になり、32bitポインタは
+unionの中に詰めずに置かれ、整数は64bitのままです。時計上で正しいboxingの選択は
+これだけです。
 
-### arm64_32 の libmruby.a を作る
+### arm64_32のアーカイブを作る
 
-picoruby の mruby build (`MRuby::CrossBuild`) は `arm64_32` を直接ターゲットには
-しません。明示的な arch flag がなければ host アーキテクチャ / `arm64` のオブジェクトが
-生成されます。このギャップを `rake watchos:led:device:lib` が 1 タスクで埋めます。
+picoruby のmrubyビルド（`MRuby::CrossBuild`）は`arm64_32`を直接ターゲットに
+しません。archフラグを明示しなければホストarchか`arm64`のオブジェクトを吐きます。
+`rake watchos:led:device:lib`が1タスクでその穴を埋めます。
 
-- まず `build_config/r2p2-picoruby-watchos-device.rb` で cross-build し、続いて
-  `build_config/recompile_arm64_32.rb` を実行して結果を `Vendor/lib` に再配置します。
-  Xcode に渡る archive は常に `arm64_32` のみです。
-- `recompile_arm64_32.rb` は build ディレクトリを走査し、各オブジェクトのソースを
-  `.d` depfile から特定して `-arch arm64_32` で再コンパイルし、`arm64_32` のみの
-  `libmruby.a` を作り直します。
-- build_config の `cc.flags` 自体が `-arch arm64_32` を指定しているため、この
-  スクリプトの再コンパイル対象は 0 個で、archive が `arm64_32` のみであることを
-  検証する safety net として働きます。
+1. `build_config/r2p2-picoruby-watchos-device.rb`でクロスビルドする。
+2. `build_config/recompile_arm64_32.rb`を走らせる。これはビルドディレクトリを
+   歩き、各オブジェクトのソースを`.d`のdepfileから特定し、`-arch arm64_32`で
+   コンパイルし直し、`arm64_32`だけの`libmruby.a`を再アーカイブする。
+3. 結果を`Vendor/lib`へ再配置する。
 
-### ABI defines の single source of truth
+ビルド設定の`cc.flags`自体が既に`-arch arm64_32`を指しているので、通常このスクリプト
+の再コンパイル対象は0件です。Xcodeへ渡る前にアーカイブが`arm64_32`のみであることを
+確かめるセーフティネットとして働きます。
 
-`mrb_value` のレイアウトを決める defines (`MRB_INT64`、`MRB_NO_BOXING`、
-`MRB_CONSTRAINED_BASELINE_PROFILE` など) は 3 つのコンパイラから読まれ、byte 単位で
-一致している必要があります。一致しないと、最終 archive に `mrb_value` / `mrb_state`
-のレイアウトが異なるオブジェクトが混ざり、実行時にメモリを破壊します。
+### ABI defineの単一の真実
 
-- `rake watchos:led:device:lib` (mruby オブジェクト) — defines は
-  `build_config/r2p2-picoruby-watchos-device.rb` から
-- `recompile_arm64_32.rb` (arm64_32 再コンパイル) — 独自のリストを持たず、同じ
-  build_config から `conf.cc.defines` をパースします。再 archive する mruby
-  オブジェクトから乖離することがありません。
-- Xcode (`picoruby_bridge.c` とアプリ) — `project.yml` の
-  `GCC_PREPROCESSOR_DEFINITIONS`
+`mrb_value`と`mrb_state`のレイアウトを決める define（`MRB_INT64`、
+`MRB_NO_BOXING`、`MRB_BASELINE_PROFILE=1`ほか）は3つの別々のコンパイルに読まれ、
+1バイトも違わず一致していなければなりません。食い違うと、最終アーカイブが異なる
+構造体レイアウトのオブジェクトを混ぜ、実行時にメモリを壊します。
 
-### 大きめの VM スレッドスタック
+| コンパイル | define の出どころ |
+|---|---|
+| `rake watchos:led:device:lib`（mruby のオブジェクト） | `build_config/r2p2-picoruby-watchos-device.rb` |
+| `recompile_arm64_32.rb`（arm64_32 のパス） | 自前のリストを持たず、同じビルド設定から`conf.cc.defines`をパースする |
+| Xcode（`picoruby_bridge.c`とアプリ） | `project.yml`の`GCC_PREPROCESSOR_DEFINITIONS` |
 
-watchOS が `DispatchQueue` の worker スレッドに与えるスタックは小さく、mruby VM +
-prism コンパイラの初期化には足りません。`VMExecutor` は VM を専用の `Thread` で
-動かし、`Thread.stackSize` で 4 MB のスタックを明示的に確保します。すべての VM
-呼び出しはそのスレッドに固定された serial queue に流すため、VM のライフタイム全体が
-シングルスレッドに保たれます。
+`MRB_BASELINE_PROFILE=1`がビルド設定に書かれていない点に注意してください。設定が
+`PICORB_PLATFORM_POSIX`を立てるので`picoruby-mruby`がこの define をbuild-wideに
+追加します。`sizeof(mrb_state)`を変えるため、`project.yml`側もこれを写す必要が
+あります。
 
-## ファイル構成
+### forkとexec抜きの`mruby-io`
 
-VM、C bridge (`../../../bridge`)、build config (`../../../build_config`) は repo
-root にあります。このディレクトリにあるのはアプリ本体と `app.rb` です。
+`PICORB_PLATFORM_POSIX`を立てると`mruby-io`が入りますが、そのposix HALは
+`IO.popen`を`fork`と`exec`で実装しています。watchOS SDKはどちらも禁じているので、
+このHALはそのままではコンパイルできません。`mruby-io`はupstream mrubyのsubmodule
+なので手を入れず、代わりにmrubyの外部HAL provider規約（`hal-<short>-<conf>`という
+名前のgemがportのオブジェクトを置き換える）を使います。
+`conf.gem core: "hal-io-darwin"`が、同じコードからspawnだけを抜いたものを供給
+します。iOSとmacOSにこれは不要で、posix HALのままです。
 
-- `app.rb` — LED の状態機械 (`LEDApp#tick` / `#toggle`)。リソースとしてバンドル
-  されます。
-- `Sources/VMExecutor.swift` — VM を所有する 4 MB スタックの専用スレッド、0.1 秒の
-  tick タイマー、`toggle()`
-- `Sources/ContentView.swift` — 赤と青の円を表示する `Text`。`.onTapGesture` で
-  toggle、`.onAppear` で boot
-- `Sources/App.swift` — `@main` の watchOS アプリエントリ
-- `Sources/WatchLEDToggle-Bridging-Header.h` — C の VM bridge を Swift に公開
-- `project.yml` — xcodegen のプロジェクト定義。`WKWatchOnly`、`-lmruby` のリンク、
-  ABI defines のミラー
+### 大きなVMスレッドスタック
+
+watchOSが`DispatchQueue`のワーカースレッドに与えるスタックは、mruby VMとprism
+コンパイラの初期化には小さすぎます。そこで`VMExecutor`はVMを、4MBのスタックを
+明示した専用の`Thread`（`Thread.stackSize`）上で走らせ、すべてのVM呼び出しをその
+スレッドのシリアルキューに固定します。VMの生存期間全体がシングルスレッドに保たれ
+ます。
+
+## ファイル
+
+VM・Cブリッジ（`../../../bridge`）・ビルド設定（`../../../build_config`）は
+リポジトリのルートにあります。このディレクトリにあるのはアプリと`app.rb`です。
+
+- `app.rb` — 状態機械（`LEDApp#tick`、`#toggle`）。リソースとして同梱。
+- `Sources/VMExecutor.swift` — VMを持つ4MBスタックの専用スレッド、0.1秒の
+  tickタイマー、`toggle()`。
+- `Sources/ContentView.swift` — 赤/青の円`Text`、切り替えの`.onTapGesture`、
+  起動の`.onAppear`。
+- `Sources/App.swift` — `@main`のwatchOSアプリエントリポイント。
+- `Sources/WatchLEDToggle-Bridging-Header.h` — C VMブリッジをSwiftへ公開。
+- `project.yml` — xcodegenのプロジェクト定義。`WKWatchOnly`、`-lmruby`のリンク、
+  ABI defineの写し。
 
 ## ビルドと実行
-
-watchOS Simulator と実機の Apple Watch の両方で動きます。
 
 ### Simulator
 
 ```sh
-rake watchos:led:all     # lib -> gen -> build -> watch sim を boot -> install -> launch
+rake watchos:led:all     # lib -> gen -> build -> watch sim 起動 -> install -> launch
 ```
 
 ### 実機
 
-初回の実機ビルドの前に、`project.yml` の `DEVELOPMENT_TEAM: YOUR_TEAM_ID` を
-自分の Team ID に置き換えてください。詳細は
-[実機ビルド](../../../README_jp.md#実機ビルド) を参照してください。
+最初の実機ビルドの前に、`project.yml`の`DEVELOPMENT_TEAM: YOUR_TEAM_ID`を自分の
+Team IDに置き換えてください。詳細は
+[実機で動かす](../../../README_jp.md#実機で動かす)を参照。
 
 ```sh
-rake watchos:led:device:all   # lib (+ arm64_32 再コンパイル) -> gen -> build -> install -> launch
+rake watchos:led:device:all   # lib（+ arm64_32 パス）-> gen -> build -> install -> launch
 ```
 
-段階的に実行する場合は `rake watchos:led:device:lib && rake watchos:led:gen &&
-rake watchos:led:device:build && rake watchos:led:device:run` です。`:run` は
-ペアリング済みの watch を `xcrun devicectl list devices` で自動的に見つけます。
+段階的に実行する場合:
 
-起動するとコンソールに `booted`、続いて `VM opened` が出ます (boot 用の Ruby が実行
-され、VM が生きている状態です)。画面をタップすると円の色が赤と青で切り替わります。
+```sh
+rake watchos:led:device:lib
+rake watchos:led:gen
+rake watchos:led:device:build
+rake watchos:led:device:run     # ペアリング済みの時計を xcrun devicectl で探す
+```
 
-実機での注意点:
+`rake watchos:led:device:check`は署名を無効にしてgeneric watchOS device向けに
+リンクするので、時計を繋がずにSDKレベルの破損を捕まえられます。
 
-- この bundle id の初回起動時には、デバイス上で一度だけ信頼 (trust) の操作が必要です。
-- watch がロックされていると `:run` は `FBSOpenApplicationErrorDomain error 7 Locked`
-  で失敗します。ロックを解除して再実行してください。
+起動するとコンソールに`booted`、続いて`VM opened`が出ます。起動用のRubyが走り
+VMが生きているということです。画面をタップすると円が赤と青の間で切り替わります。
+
+実機での注意:
+
+- bundle idごとに初回起動時、実機側での信頼操作が1度だけ必要です。
+- 時計がロックされていると`:run`が
+  `FBSOpenApplicationErrorDomain error 7 Locked`で失敗します。解除して再実行して
+  ください。

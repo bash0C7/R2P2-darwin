@@ -1,150 +1,166 @@
-# stackchan — Ruby で書いた Stack-chan BLE central
+# stackchan — RubyでStack-chanのBLEセントラルを書く
 
 English: [README.md](README.md)
 
-`stackchan-picoruby` firmware で動く
-[Stack-chan](https://github.com/meganetaaan/stack-chan) ロボットに接続し、
-顔・LED・首サーボ・トルクを Nordic UART Service (NUS) 越しに操作する
-PicoRuby 製の BLE central です。BLE のロジックはすべて `app.rb` にあり、
-Swift は VM のホストとボタンタップの転送だけを担当します。
+`stackchan-picoruby`ファームウェアで動く
+[Stack-chan](https://github.com/meganetaaan/stack-chan)ロボットへ接続し、Nordic
+UART Service（NUS）経由で表情・LED・首のサーボ・トルクを操るPicoRubyのBLE
+セントラルです。BLEのロジックはすべて`app.rb`にあり、SwiftはVMをホストして
+ボタンのタップを転送します。
 
-## 仕組み
+[virtual-peripheral](../virtual-peripheral/README_jp.md)が端末をBLEの
+*ペリフェラル*にするのに対し、このexampleは*セントラル*にします。picoruby-ble
+darwin portのもう半分を、実機相手に動かすものです。
 
-`app.rb` は同梱の固定 Ruby です。ユーザーが編集することも、ダウンロードで
-差し替わることもありません。PicoRuby はアプリ自身の挙動を書くための実装言語
-にすぎず、App Review Guideline 2.5.2 に抵触しない構成です。
+## しくみ
 
-- `picoruby-ble` の central role (scan -> connect -> GATT discovery -> NUS RX
-  write) を Darwin / CoreBluetooth port で駆動します。Swift 側に
-  CoreBluetooth のコードはありません。
-- `picoruby-ble` の mrblib が必要とする stdlib gem (`mruby-pack`、
-  `mruby-string-ext`、`mruby-sprintf`) を、他の example と共有する最小の
-  base config には触れず、example 専用の build config で追加しています。
-- frame codec は host CRuby (`test_frames.rb`) で検証でき、BLE ハードウェアを
-  必要としません。
+`app.rb`は同梱の固定Rubyです。ユーザが編集するものでもダウンロードするものでも
+なく、PicoRubyは単にこのアプリ自身の振る舞いの実装言語です。App Review Guideline
+2.5.2に抵触しないのはそのためです。
 
 ```
-ContentView.swift  (buttons)
+ContentView.swift  （ボタン）
       │  vm_call(method, arg)
       ▼
-VMExecutor.swift   (single VM thread)
-      │  C bridge
+VMExecutor.swift   （単一の VM スレッド）
+      │  C ブリッジ
       ▼
-app.rb  $app = Stackchan.new
-  Stackchan#connect   → RealBleLink#connect
-  Stackchan#face/led/head/torque → RealBleLink#write → BLE::write_value_of_characteristic_without_response
+app.rb   $app = Stackchan.new
+  Stackchan#connect              → RealBleLink#connect
+  Stackchan#face/led/head/torque → RealBleLink#write
+                                 → BLE::write_value_of_characteristic_without_response
       │
       ▼
-picoruby-ble (Darwin port)  →  PicoBLEDarwin Swift package  →  CoreBluetooth
+picoruby-ble（darwin port）→ PicoBLEDarwin Swift パッケージ → CoreBluetooth
 ```
 
-- `BLE_AVAILABLE` は起動時に判定されます。デバイス / Simulator (BLE リンク
-  済み) では true になり `RealBleLink` が無線を駆動、host CRuby
-  (`test_frames.rb`) では false になり、記録用の `BleLink` スタブが frame を
-  捕捉してアサーションに使われます。
-- `VMExecutor` が唯一の直列 VM スレッドを所有し、周期的に `tick` を積み
-  ます。接続中は `Stackchan#tick` が BLE イベントをポンプします。
-- NUS RX handle が bind される前に書かれた frame はキューに溜まり、
-  `connect` 成功時にまとめて送出されます。
+- セントラルの役割（スキャン、接続、GATTディスカバリ、NUS RXへのwrite）は
+  darwin / CoreBluetooth port経由で駆動します。SwiftのCoreBluetoothコードは
+  ありません。
+- `VMExecutor`が単一のシリアルVMスレッドを持ち、周期的な`tick`を投げます。
+  `Stackchan#tick`は接続中BLEイベントを汲み続けます。
+- NUS RXのハンドルが結び付く前に書かれたフレームはキューされ、`connect`成功時に
+  flushされます。早めに押したボタンが落ちません。
+
+### 1つのソースファイル、2つの実行環境
+
+`app.rb`はアプリ内でもホストCRubyでも動き、どちらかをロード時に判定します。
+
+```ruby
+BLE_AVAILABLE = ...   # このVMに picoruby-ble の BLE クラスがリンクされているか
+```
+
+実機やSimulatorではBLE gemがリンクされているので`BLE_AVAILABLE`は真になり、
+`RealBleLink`が無線を駆動します。ホストCRubyでは偽になり、記録役の`BleLink`
+スタブがフレームを捕まえてアサーションに使えるようにします。`BLE`クラスへの参照は
+すべてこの定数でガードされており、このファイルに`require_relative`もモジュールの
+名前空間も無いのはそのためです。両方の世界で丸ごと1ソースとして読まれます。
+
+## フレームのコーデック
+
+`app.rb`内の`FrameCodec`が全フレームをエンコードします。上記の切り分けにより、
+デバイスもビルドもBLEハードウェアも無しにホストCRubyで走ります。
+
+```sh
+ruby examples/ios/stackchan/test_frames.rb   # 全部 PASS
+```
+
+意図的な非対称が1つあり、触ってはいけません。APIの`"left"` / `"right"`は
+Stack-chan自身の視点（その手）であり、ファームウェア側の配線が逆になっているので、
+`"left"`は電文上`R`になります。`SIDE_TO_CHAR`はハードウェアに合わせてあり、
+load-bearingです。「直さ」ないでください。
 
 ## ハードウェア
 
-BLE リンクの両端に実機が必要です。
+BLEリンクの両端が実機です。
 
-- iOS 17+ の iPhone を使います (BLE 対応モデルならどれでも可)。
-- Stack-chan ロボットには `stackchan-picoruby` firmware を書き込んでおきます。
-  `StackChan-PicoRuby-<suffix>` という名前で advertise し、NUS を公開します。
+- iOS 17以降のiPhone（BLEが使えるモデルなら何でも）。
+- `stackchan-picoruby`ファームウェアを書き込んだStack-chanロボット。
+  `StackChan-PicoRuby-<suffix>`としてアドバタイズし、NUSを公開します。
 
 ## 操作
 
-各ボタンは `vm_call` を 1 回 VM スレッドに積み、エンコード済みの frame が
-NUS RX characteristic に書き込まれます。
+ボタン1つがVMスレッドへ`vm_call`を1回投げ、エンコードされたフレームがNUS RX
+キャラクタリスティックへ書かれます。
 
-- Face — neutral / smile / joy / surprised / sad / angry: `<F:N>` を送信
-  (N は顔の index)。
-- LED — red / green / blue / yellow / white / off:
-  `<L:1,R:r,G:g,B:b,S:B,M:s>` を送信 (両側・solid mode)。
-- Head — Left: yaw 左 40°、400 ms。
-- Head — Center: yaw 0°、pitch 0°、400 ms (リセット)。
-- Head — Right: yaw 右 40°、400 ms。
-- Head — Up: pitch 上 30°、400 ms。
-- Torque — On / Off: サーボの有効化 / 無効化。
+| 操作 | フレーム |
+|---|---|
+| 表情 — neutral / smile / joy / surprised / sad / angry | `<F:N>`（Nは表情index） |
+| LED — 赤 / 緑 / 青 / 黄 / 白 / off | `<L:1,R:r,G:g,B:b,S:B,M:s>`（両側、solidモード） |
+| 首 — Left | yawを左へ40°、400ms |
+| 首 — Center | yaw 0°、pitch 0°、400ms（リセット） |
+| 首 — Right | yawを右へ40°、400ms |
+| 首 — Up | pitchを上へ30°、400ms |
+| トルク — On / Off | サーボの有効・無効 |
 
-## frame codec
+## ビルド設定
 
-frame のエンコードはすべて `app.rb` の `FrameCodec` が行います。codec は
-host CRuby でそのまま動くので、デバイスもビルドも BLE ハードウェアも無しで
-検証できます。
+`build_config/r2p2-picoruby-ios-stackchan-{sim,device}.rb`は縮小版のgem集合から
+出発して、次を足します。
 
-```
-ruby examples/ios/stackchan/test_frames.rb   # 全て PASS、BLE ハードウェア不要
-```
+- **`picoruby-ble`**。darwin portは`conf.ports :darwin, :posix`で選ばれます。
+  `picoruby-cyw43`依存（rp2040の無線）はgem自身の`build.darwin?`ガードで落ちます。
+  `picoruby-mbedtls`依存は残り、残さねばなりません。`ble.rb`が起動時に
+  `require 'mbedtls'`し、GATTデータベースのハッシュが`MbedTLS::CMAC`を使うため、
+  外すとBLEのRuby層が丸ごと読み込まれず、`BLE.new`が
+  `wrong number of arguments`で落ちます。mbedtlsとrngのdarwin portはiOS向けに
+  問題なくビルドでき、エントロピーは`SecRandomCopyBytes`から取ります。アプリは
+  そのために`-framework Security`をリンクします。
+- **`mruby-string-ext`** — picoruby-ble の`ble_utils.rb`が使う`String#<<`。
+- **`mruby-pack`** — 同じく`ble_utils.rb`の`Array#pack`と`require 'pack'`。
+- **`mruby-sprintf`** — `ble_central.rb`のデバッグ用文字列補間が使う
+  `Kernel#sprintf`。
 
-- API の "left"/"right" は Stack-chan 自身から見た向き (自分の手) です。
-  firmware 側の配線が左右逆なので、"left" はワイヤ上では `R` になります。
-  `SIDE_TO_CHAR` はハードウェアに合わせた仕様であり、「修正」しては
-  いけません。
-
-## build config
-
-`build_config/r2p2-picoruby-ios-stackchan-{device,sim}.rb` が base VM に以下を
-追加します。
-
-- `picoruby-ble` — `conf.ports :darwin` で Darwin port を選択し、宣言されている
-  `picoruby-mbedtls` / `picoruby-cyw43` への依存を除去 (Darwin の C コードは
-  どちらも参照しないため)。
-- `mruby-string-ext` — `ble_utils.rb` が使う `String#<<`。
-- `mruby-pack` — `ble_utils.rb` が使う `Array#pack` / `require 'pack'`。
-- `mruby-sprintf` — `ble_central.rb` の debug 出力が使う `Kernel#sprintf`。
-
-この stdlib gem 3 つは PicoRuby の `stdlib.gembox` (vm_mruby branch) に含まれ、
-rp2040 向けビルドには必ず入っています。base の iOS config は REPL を軽く保つ
-ためにこれらを省いており、この example が example 専用に追加しています。
+このmruby gem 3つは picoruby が同梱するmrubyツリー
+（`mrbgems/picoruby-mruby/lib/mruby/mrbgems`）にあり、ディレクトリ指定で取り込み
+ます。rp2040のビルドはPicoRubyの`stdlib` gembox経由でこれらを得ますが、縮小版の
+gem集合はリンクを小さく保つためgemboxを省いています。そこでこのexampleが、共有の
+ベースではなく自分の設定に閉じた形で足しています。
 
 ## ビルドと実行
 
 ### Simulator
 
-`rake ios:stackchan:all` (lib -> gen -> build -> run) です。Simulator では
-応答する peripheral がいないため、scan は単にタイムアウトします。
+```sh
+rake ios:stackchan:all      # lib -> gen -> build -> run
+```
+
+Simulatorでは応答するペリフェラルが居ないので、スキャンは単にタイムアウトします。
+このターゲットで確認できるのはビルドがリンクしVMが動くことまでです。
 
 ### 実機
 
-初回の実機ビルドの前に、`project.yml` の `DEVELOPMENT_TEAM: YOUR_TEAM_ID` を
-自分の Team ID に置き換えてください。詳細は
-[実機ビルド](../../../README_jp.md#実機ビルド) を参照してください。
+最初の実機ビルドの前に、`project.yml`の`DEVELOPMENT_TEAM: YOUR_TEAM_ID`を自分の
+Team IDに置き換えてください。詳細は
+[実機で動かす](../../../README_jp.md#実機で動かす)を参照。
 
-```
-# 1. 接続中の iPhone 向けに BLE 入りの libmruby.a をビルド
-rake ios:stackchan:device:lib
-
-# 2. Xcode プロジェクトを生成・署名してビルド
-rake ios:stackchan:gen
-rake ios:stackchan:device:build
-
-# 3. インストールして起動 (コンソール出力をストリーム表示)
-rake ios:stackchan:device:run
-
-# まとめて 1 ステップで:
+```sh
 rake ios:stackchan:device:all
 ```
 
-初回起動時に iOS が Bluetooth の許可を求めるので、許可してください。
+段階的に実行する場合:
 
-## 既知の制約
+```sh
+rake ios:stackchan:device:lib     # device SDK 向けの BLE 入り libmruby.a
+rake ios:stackchan:gen            # Xcode プロジェクトを生成
+rake ios:stackchan:device:build   # 署名してビルド
+rake ios:stackchan:device:run     # インストールして起動（コンソールを流す）
+```
 
-実機で動かす際の制約です。
+初回起動時にiOSがBluetooth許可を尋ねるので、許可してください。
 
-- Bluetooth 許可: `project.yml` で `NSBluetoothAlwaysUsageDescription` を設定
-  しています。これが無いと `CBCentralManager` が `.poweredOn` に到達せず、
-  scan は何もしません。
-- scan タイムアウト: `scan(timeout_ms: 30000)` は connect -> GATT discovery ->
-  TC_IDLE の全サイクル (100 ms ポーリングでの複数回の BLE 往復) をカバー
-  します。短縮は実機で計測してからにしてください。
-- Free Personal Team: iOS のインストール可能アプリは 3 つまでです。install
-  error 3002 が出たら
-  `xcrun devicectl device uninstall app --device <UDID> <bundleid>` で 1 つ
-  削除してください。
-- デバイスのロック: 画面がロックされていると起動が
-  `FBSOpenApplicationServiceErrorDomain error 1` で失敗します。先にロックを
-  解除してください。
+## 実機で動かすときの制約
+
+- **Bluetooth権限**。`project.yml`に`NSBluetoothAlwaysUsageDescription`を
+  設定しています。無いと`CBCentralManager`が`.poweredOn`に到達せず、スキャンが
+  no-opになります。
+- **スキャンのタイムアウト**。`scan(timeout_ms: 30000)`は接続 → GATT
+  ディスカバリ → アイドルまでのサイクル全体を覆う必要があり、100ms pollingでの
+  BLE往復が複数回入ります。短くするのは自分のハードウェアで実測してからに
+  してください。
+- **無料Personal Teamのアプリ数上限**。iOSは3つまでです。インストールエラー3002が
+  上限到達のサインで、
+  `xcrun devicectl device uninstall app --device <UDID> <bundle-id>`で1つ外します。
+- **デバイスのロック**。画面がロックされていると
+  `FBSOpenApplicationServiceErrorDomain error 1`で起動に失敗します。先に解除して
+  ください。

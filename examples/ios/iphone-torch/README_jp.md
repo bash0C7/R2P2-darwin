@@ -1,118 +1,130 @@
-# iPhone Torch — Ruby で動かすフラッシュライト
+# iphone-torch — Rubyが駆動する懐中電灯
 
 English: [README.md](README.md)
 
-iOS 版の「L チカ」です。ON / OFF の 2 つのボタンで iPhone のトーチ (フラッシュライト) を
-点灯・消灯しますが、その挙動はすべて Ruby にあります。`app.rb` が `Torch` クラスを呼び、
-`picoruby-iphone-torch` gem の Darwin port がその呼び出しを `AVCaptureDevice` の
-トーチ操作に変換します。SwiftUI 層はトーチのロジックを一切持たず、PicoRuby VM の起動と
-ボタンタップの転送だけを担います。
+組み込み開発のhello worldである「Lチカ」の、iOS版です。2つのボタンでiPhoneの
+ライトをon / offし、その振る舞いはすべてRubyにあります。`app.rb`が`Torch`
+クラスを呼び、`picoruby-iphone-torch` gemのdarwin portがその呼び出しを
+`AVCaptureDevice`の操作へ変換します。SwiftUI層はライトのロジックを1つも持たず、
+PicoRuby VMを起動してボタンのタップを転送するだけです。
 
-設計は `../virtual-peripheral` (Ruby が picoruby port を通じて Apple framework を駆動する)
-と同じ考え方を、最小のハードウェア primitive (単一のオン/オフのライト) に縮めたものです。
-明るさ (level) の制御はスコープ外で、扱うのは点灯と消灯のみです。
+これは[virtual-peripheral](../virtual-peripheral/README_jp.md)の設計、つまり
+「Rubyが picoruby のport経由でAppleのフレームワークを駆動する」を、ハードウェアの
+最小プリミティブ（ライト1つのon / off）まで縮めたものです。明るさの制御は対象外
+です。
 
-## 仕組み
+## しくみ
 
-ボタンを 1 回押すごとに `vm_call` が 1 回走ります。戻り値は `app.rb` が print した内容
-(captured stdout) で、UI がそれをログに追記します。
+ボタン1押しが`vm_call` 1回に対応します。戻り値は`app.rb`がprintした内容で、UIは
+それをログに追記します。
 
 ```
-[SwiftUI ON / OFF buttons]
-  --vm_call(vm, "on"/"off", "")-->  $app (TorchApp, Ruby)  -->  Torch#on / #off
-    --> src/mruby/torch.c      (mruby C method)
-    --> TORCH_set(true/false)  include/torch.h (port ABI)
-    --> ports/darwin/torch.c   Darwin port
-    --> ptorch_set(1/0)        Swift @c export
-    --> AVCaptureDevice.torchMode = .on/.off
+[SwiftUI の ON / OFF ボタン]
+  --vm_call(vm, "on"/"off", "")-->  $app（TorchApp、Ruby）  -->  Torch#on / #off
+    --> src/mruby/torch.c           mruby の C メソッド
+    --> TORCH_set(true/false)       include/torch.h、port ABI
+    --> ports/darwin/torch.c        darwin port
+    --> ptorch_set(1/0)             Swift の @c export
+    --> AVCaptureDevice.torchMode = .on / .off
 ```
 
-virtual-peripheral と違い poll timer はありません。トーチは fire-and-forget の
-オン/オフなので、1 回の押下につき `vm_call` が 1 回で完結します。
+virtual-peripheralと違い、ここにpollタイマーはありません。ライトは撃ちっぱなしで
+よいので、1押しにつき`vm_call` 1回で話が終わります。
 
-`app.rb` は bytecode としてバイナリに焼き込まれてはいません。プレーンテキストの
-resource として同梱され、VM の起動時 (`VMExecutor.start` -> `vm_open(bootSource)`) に
-アプリの中で PicoRuby の prism compiler が実行時コンパイルします。トーチをいつ点けるか、
-どう点滅させるか、何をログに出すか — アプリの挙動はすべてこの Ruby ファイルにあります。
-C gem は `Torch` primitive (`on` / `off` / `available?`) を公開するだけ、Swift package は
-`AVCaptureDevice` を叩くだけで、どちらにも「点滅」や「カウント」のロジックはありません。
+`app.rb`はバイトコードとしてバイナリに焼き込まれていません。プレーンテキストの
+リソースとして同梱され、起動時にアプリ内のprismコンパイラがコンパイルします
+（`VMExecutor.start` → `vm_open(bootSource)`）。いつライトを点けるか、どう
+点滅させるか、何をログに出すか——それらはすべてそのRubyファイルにあります。C gem
+が公開するのは`Torch`プリミティブ（`on` / `off` / `available?`）だけ、Swift
+パッケージがやるのは`AVCaptureDevice`を叩くことだけで、どちらも点滅や回数の
+ロジックを持ちません。
 
-これを具体的に示すため、ON では Ruby で定義した点滅が走ります。`app.rb` 内の `while`
-ループが `sleep_ms(BLINK_MS)` を挟みながら `@torch.on` / `@torch.off` を `BLINK_COUNT` 回
-呼び、その後トーチを点灯したままにします。押した回数のカウントも Ruby 側です。
-ループが Ruby、光がハードウェアという、文字どおりの「L チカ」です。
+### 点滅はRubyのループ
 
-点滅パターンの変更に C / Swift の rebuild は不要です:
+具体的に言うと、ONはRubyで定義された点滅を走らせます。`app.rb`の`while`ループが
+`@torch.on`と`@torch.off`を`BLINK_COUNT`回、間に`sleep_ms(BLINK_MS)`を挟んで呼び、
+最後はライトを点けたままにし、押した回数もRubyで数えます。文字通りのLチカで、
+ループがRuby、光がハードウェアです。
+
+CもSwiftも触らずに点滅を変えられます。
 
 ```sh
-# examples/ios/iphone-torch/app.rb を編集 (例: BLINK_COUNT = 7)
-rake ios:torch:device:build   # app.rb resource を .app に再コピーするだけ
-                              # (libmruby.a と PicoTorchDarwin は手つかず)
-rake ios:torch:device:run     # 再インストールして起動
+# examples/ios/iphone-torch/app.rb を編集。例えば BLINK_COUNT = 7 にする
+rake ios:torch:device:build   # .app 内の app.rb リソースを入れ替えるだけ。
+                              # libmruby.a と PicoTorchDarwin は無変更
+rake ios:torch:device:run     # 入れ直して起動
 ```
 
-これでトーチは 7 回点滅します。変更したのは Ruby だけで、コンパイル済みの C gem と
-Swift backend はバイト単位で同一のままです。`sleep_ms` は `mruby-task` の Kernel 関数で、
-iOS では bridge HAL (`bridge/task_hal_ios.c`) を通じて実時間で block するため、
-点滅の間隔は本物の時間です。
+これでライトは7回光ります。変えたのはRubyだけで、コンパイル済みのC gemとSwift
+バックエンドは1バイトも同じです。
+
+`sleep_ms`は`mruby-task`由来のKernel関数です。iOSではブリッジのtask HAL
+（`../../../bridge/task_hal_ios.c`）を通して実時間でblockするので、点滅の間の
+休みはビジーウェイトではなく本物の待ちです。
 
 ## gem: `picoruby-iphone-torch/`
 
-ローカルの mrbgem です (`vendor/picoruby` には含まれません)。picoruby の ports モデルに
-従い、インターフェースは `include/`、アーキテクチャ固有の実装は `ports/<arch>/` に
-置かれます。port は `darwin` (iPhone/iOS) のみです。
+`vendor/picoruby`ではなくこのexampleディレクトリに置いたローカルmrbgemです。
+picoruby のportsモデルに従い、インターフェースは`include/`に、アーキテクチャ依存の
+実装は`ports/<arch>/`に置きます。portは`darwin`だけです。
 
-- `mrbgem.rake` — gem spec (依存なし)
-- `include/torch.h` — port ABI: `TORCH_set(bool)` / `TORCH_available()`
-- `src/torch.c` — VM dispatch (`#include "mruby/torch.c"`)
-- `src/mruby/torch.c` — mruby C 拡張。`Torch` クラス (`on` / `off` / `available?`) を定義
-- `ports/darwin/torch.c` — `TORCH_*` -> Swift `ptorch_*` (extern をここで宣言)
-- `ports/darwin/ext/` — Swift package `PicoTorchDarwin` (`AVCaptureDevice` backend)
+| パス | 役割 |
+|---|---|
+| `mrbgem.rake` | gem spec。依存は宣言しない |
+| `include/torch.h` | port ABI: `TORCH_set(bool)`、`TORCH_available()` |
+| `src/torch.c` | VMへのdispatch（`#include "mruby/torch.c"`） |
+| `src/mruby/torch.c` | `Torch`クラス（`on` / `off` / `available?`）を定義するmruby C拡張 |
+| `ports/darwin/torch.c` | `TORCH_*`からSwiftの`ptorch_*` externへ |
+| `ports/darwin/ext/` | `PicoTorchDarwin` Swiftパッケージ（`AVCaptureDevice`） |
 
-`Torch#on` / `#off` / `#available?` は C で定義され、port ABI を呼びます。Darwin port は
-`PicoTorchDarwin` Swift package に委譲し、その `@c` export (`ptorch_set` /
-`ptorch_available`) が `AVCaptureDevice` を包みます。Swift package はアプリ target に
-リンクされ、`libmruby.a` 内で未解決のまま残る `ptorch_*` シンボルをそこで解決します。
-BLE example の `PicoBLEDarwin` と同じパターンです。
+`Torch#on` / `#off` / `#available?`はCで定義され、port ABIを呼びます。darwin port
+は`PicoTorchDarwin`へ委譲し、その`@c` export（`ptorch_set`、`ptorch_available`）が
+`AVCaptureDevice`を包みます。このSwiftパッケージはアプリターゲットにリンクされ、
+`libmruby.a`が意図的に未定義のまま残した`ptorch_*`シンボルを解決します。BLE系
+exampleの`PicoBLEDarwin`とまったく同じ仕掛けです。
 
-トーチ制御は `AVCaptureDevice.lockForConfiguration` 経由で capture session を開始しない
-ため、カメラの permission も privacy key も不要です。
+`AVCaptureDevice.lockForConfiguration`経由でライトを操作してもキャプチャ
+セッションは始まらないので、このアプリにカメラ権限も`Info.plist`のプライバシー
+用途キーも要りません。
 
 ## ビルドと実行
 
-前提はフル版の `Xcode.app`、iOS SDK、`xcodegen` です (`rake check` で確認できます)。
+前提はフルの`Xcode.app`、iOS SDK、`xcodegen`です。`rake check`で確認できます。
 
 ### Simulator
 
 ```sh
-rake ios:torch:all     # libmruby.a の cross-build -> xcodegen -> build -> 起動
+rake ios:torch:all     # lib -> gen -> build -> run
 ```
 
-Simulator にトーチはありません。アプリは起動し VM も動きますが、ON は点滅の代わりに
-`ON #<n>: torch unavailable (no actuation)` をログに出します。この target はビルドが
-リンクでき VM が動くことの確認用です。
+Simulatorにライトはありません。アプリは起動しVMも動きますが、ONは点滅せず
+`ON #<n>: torch unavailable (no actuation)`とログに出ます。このターゲットで
+確認できるのはビルドがリンクしVMが動くことまでです。
 
-### 実機 (実際のトーチ)
+### 実機
 
-初回の実機ビルドの前に、`project.yml` の `DEVELOPMENT_TEAM: YOUR_TEAM_ID` を
-自分の Team ID に置き換えてください。詳細は
-[実機ビルド](../../../README_jp.md#実機ビルド) を参照してください。
+最初の実機ビルドの前に、`project.yml`の`DEVELOPMENT_TEAM: YOUR_TEAM_ID`を自分の
+Team IDに置き換えてください。詳細は
+[実機で動かす](../../../README_jp.md#実機で動かす)を参照。
 
 ```sh
-rake ios:torch:device:all   # 接続済みで署名できる iOS device が必要
+rake ios:torch:device:all   # 接続済み・署名済みのiPhoneが要る
 ```
 
-実機の iPhone では、ON でトーチが `BLINK_COUNT` 回点滅したあと点灯したままになり
-(ログは `ON #<n>: blinked <BLINK_COUNT>x in Ruby, now lit`)、OFF で消灯します。
+実機ではONがライトを`BLINK_COUNT`回光らせてから点けたままにし
+（ログは`ON #<n>: blinked <BLINK_COUNT>x in Ruby, now lit`）、OFFで消えます。
 
-## 個別の rake タスク
+## 個別タスク
 
-pipeline の各段階は単独の task としても実行できます。
-
-- `rake ios:torch:lib` — torch gem 込みの `libmruby.a` を Simulator 向けに cross-build し `Vendor/` に配置
-- `rake ios:torch:gen` — `project.yml` から `Torch.xcodeproj` を生成
-- `rake ios:torch:build` — Simulator 向けにアプリを build
-- `rake ios:torch:run` — Simulator を起動し、インストールして launch
-- `rake ios:torch:device:lib` — device SDK (iphoneos arm64) 向けに `libmruby.a` を cross-build
-- `rake ios:torch:device:build` — 接続済み device 向けに署名付きで build
-- `rake ios:torch:device:run` — 接続済み device にインストールして launch
+| タスク | 内容 |
+|---|---|
+| `rake ios:torch:lib` | torch gem込みでSimulator SDK向けに`libmruby.a`をクロスビルドし`Vendor/`へ配置 |
+| `rake ios:torch:gen` | `project.yml`から`Torch.xcodeproj`を生成 |
+| `rake ios:torch:build` | Simulator向けにビルド |
+| `rake ios:torch:run` | Simulatorを起動しインストールしてlaunch |
+| `rake ios:torch:observe` | 固定Simulatorで繰り返し起動し各runを分類 |
+| `rake ios:torch:device:lib` | device SDK（iphoneos arm64）向けに`libmruby.a`をクロスビルド |
+| `rake ios:torch:device:check` | 署名なしでgeneric device向けにリンク（実機不要） |
+| `rake ios:torch:device:build` | 接続済みデバイス向けに署名してビルド |
+| `rake ios:torch:device:run` | 接続済みデバイスにインストールしてlaunch |
+| `rake ios:torch:device:all` | 実機パイプライン一式 |

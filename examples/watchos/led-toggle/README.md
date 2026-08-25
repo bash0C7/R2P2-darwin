@@ -2,17 +2,17 @@
 
 日本語版: [README_jp.md](README_jp.md)
 
-The embedded "hello world" is the blinking LED. An Apple Watch has no LED, so this
-example stands one in on screen: a red or blue circle you toggle by tapping. The
-state machine — which color is on, and how a tap flips it — lives in `app.rb` and
-runs in a PicoRuby VM on the watch itself.
+The embedded hello world is a blinking LED. An Apple Watch has no LED, so this
+example stands one in on screen: a red or blue circle you flip by tapping. Which
+colour is on, and how a tap changes it, lives in `app.rb` and runs in a PicoRuby
+VM on the watch itself.
 
-This is a watchOS standalone app (`WKWatchOnly`), built for a physical Apple Watch
-(`arm64_32`) and the watchOS Simulator.
+It is a watchOS standalone app (`WKWatchOnly`), built for a physical Apple Watch
+(`arm64_32`) and for the watchOS Simulator.
 
 ## How it works
 
-The LED state machine is `app.rb`, a plain Ruby object:
+The state machine is `app.rb`, a plain Ruby object:
 
 ```ruby
 class LEDApp
@@ -34,97 +34,111 @@ $app = LEDApp.new
 puts "booted"
 ```
 
-Swift owns no color logic. It hosts the VM and relays the result:
+Swift owns no colour logic. It hosts the VM and relays the result:
 
 ```
 ContentView (red/blue circle Text, .onTapGesture)
         │
-        ├─ .onAppear ──> VMExecutor.start ──> vm_open(app.rb)      one persistent VM
+        ├─ .onAppear ──> VMExecutor.start ──> vm_open(app.rb)   one persistent VM
         │                                       LEDApp.new, $app
         │
         ├─ 0.1s timer ──> vm_call($app, "tick")   ──> "red"/"blue" ──> updates the Text
-        └─ tap        ──> vm_call($app, "toggle") ──> flips @state, returns the new color
+        └─ tap        ──> vm_call($app, "toggle") ──> flips @state, returns the new colour
 ```
 
-`@state == "red" ? "blue" : "red"` is evaluated by the mruby VM on the watch — the
-color Swift renders is whatever Ruby returns. `vm_call` invokes a method on the Ruby
-global `$app` and returns the method's captured `print` output as a string;
-`VMExecutor` maps that to the SwiftUI `@State` that picks the red or blue circle.
+`@state == "red" ? "blue" : "red"` is evaluated by the mruby VM on the watch, so
+the colour Swift renders is literally whatever Ruby returned. `vm_call` invokes a
+method on the Ruby global `$app` and hands back that method's captured `print`
+output as a string; `VMExecutor` maps it to the SwiftUI `@State` that selects the
+circle.
 
 ## Engineering notes
 
-The work below SwiftUI is getting a PicoRuby VM to link and run on a physical Apple
-Watch, whose CPU ABI is unlike anything else Apple ships.
+Everything below SwiftUI here is about getting a PicoRuby VM to link and run on a
+physical Apple Watch, whose CPU ABI is unlike anything else Apple ships.
 
-### arm64_32: a 32-bit-pointer ABI on a 64-bit core
+### arm64_32: 32-bit pointers on a 64-bit core
 
-A physical Apple Watch (Series 4+) runs `arm64_32` (ILP32): ARM64 registers, 32-bit
-pointers. The Simulator on an Apple-silicon Mac is ordinary 64-bit `arm64`, so a
-Simulator run proves nothing about the watch. `mrb_value`'s in-memory representation
-is exactly what an ILP32 target breaks:
+A physical Apple Watch (Series 4 and later) runs `arm64_32` — ILP32: ARM64
+registers, 32-bit pointers. The Simulator on an Apple-silicon Mac is ordinary
+64-bit `arm64`, so a green Simulator run proves nothing about the watch.
 
-- Word boxing and NaN boxing pack a tag and a pointer into one machine word and
-  assume a 64-bit pointer; both are invalid on `arm64_32`.
-- This build uses `MRB_NO_BOXING` + `MRB_INT64`: `mrb_value` is a struct (a union
-  plus a type tag), the 32-bit pointer sits unpacked in the union, and integers
-  stay 64-bit. This is the only boxing choice that is correct on the watch.
+`mrb_value`'s in-memory representation is exactly what ILP32 breaks. Word boxing
+and NaN boxing both pack a tag and a pointer into a single machine word and
+assume that word holds a 64-bit pointer; neither is valid on `arm64_32`. This
+build uses `MRB_NO_BOXING` with `MRB_INT64`: `mrb_value` becomes a struct — a
+union plus a type tag — the 32-bit pointer sits unpacked inside the union, and
+integers stay 64-bit. It is the only boxing choice that is correct on the watch.
 
-### Producing an arm64_32 libmruby.a
+### Producing an arm64_32 archive
 
-picoruby's mruby build (`MRuby::CrossBuild`) does not target `arm64_32` directly;
-without explicit arch flags it compiles host-arch / `arm64` objects.
-`rake watchos:led:device:lib` closes the gap in one task:
+picoruby's mruby build (`MRuby::CrossBuild`) does not target `arm64_32`
+directly; without explicit arch flags it emits host-arch or `arm64` objects.
+`rake watchos:led:device:lib` closes that gap in one task:
 
-- It cross-builds with `build_config/r2p2-picoruby-watchos-device.rb`, then runs
-  `build_config/recompile_arm64_32.rb` and re-stages the result under `Vendor/lib`,
-  so the archive that ships to Xcode is always `arm64_32`-only.
-- `recompile_arm64_32.rb` walks the build dir, finds each object's source via its
-  `.d` depfile, recompiles it with `-arch arm64_32`, and re-archives an
-  `arm64_32`-only `libmruby.a`.
-- The build_config's `cc.flags` themselves target `-arch arm64_32`, so the script
-  recompiles 0 objects and acts as a safety net that verifies the archive is
-  `arm64_32`-only.
+1. cross-build with `build_config/r2p2-picoruby-watchos-device.rb`;
+2. run `build_config/recompile_arm64_32.rb`, which walks the build directory,
+   finds each object's source through its `.d` depfile, recompiles it with
+   `-arch arm64_32`, and re-archives an `arm64_32`-only `libmruby.a`;
+3. re-stage the result under `Vendor/lib`.
+
+The build config's own `cc.flags` already target `-arch arm64_32`, so in the
+normal case the script recompiles zero objects and acts as a safety net that
+verifies the archive is `arm64_32`-only before it reaches Xcode.
 
 ### One source of truth for the ABI defines
 
-The `mrb_value`-determining defines (`MRB_INT64`, `MRB_NO_BOXING`,
-`MRB_CONSTRAINED_BASELINE_PROFILE`, …) are read by three compilers and must agree
-byte-for-byte; otherwise the final archive mixes objects with different
-`mrb_value` / `mrb_state` layouts and corrupts memory at runtime.
+The defines that determine `mrb_value` and `mrb_state` layout — `MRB_INT64`,
+`MRB_NO_BOXING`, `MRB_BASELINE_PROFILE=1`, and the rest — are read by three
+different compilations and must agree byte-for-byte. If they diverge, the final
+archive mixes objects with different struct layouts and corrupts memory at
+runtime.
 
-- `rake watchos:led:device:lib` (mruby objects) — defines come from
-  `build_config/r2p2-picoruby-watchos-device.rb`.
-- `recompile_arm64_32.rb` (arm64_32 recompile) — parses `conf.cc.defines` straight
-  out of that same build_config rather than carrying its own list, so the recompile
-  can never drift from the mruby objects it is re-archiving with.
-- Xcode (`picoruby_bridge.c`, app) — `GCC_PREPROCESSOR_DEFINITIONS` in `project.yml`.
+| Compilation | Where its defines come from |
+|---|---|
+| `rake watchos:led:device:lib` (mruby objects) | `build_config/r2p2-picoruby-watchos-device.rb` |
+| `recompile_arm64_32.rb` (the arm64_32 pass) | parses `conf.cc.defines` out of that same build config, rather than carrying its own list |
+| Xcode (`picoruby_bridge.c`, the app) | `GCC_PREPROCESSOR_DEFINITIONS` in `project.yml` |
 
-### A big VM thread stack
+Note that `MRB_BASELINE_PROFILE=1` is not written in the build config: since the
+config sets `PICORB_PLATFORM_POSIX`, `picoruby-mruby` adds that define
+build-wide, and `project.yml` has to mirror it because it changes
+`sizeof(mrb_state)`.
 
-watchOS gives `DispatchQueue` worker threads a stack too small for mruby VM + prism
-compiler init. `VMExecutor` runs the VM on a dedicated `Thread` with an explicit
-4 MB stack (`Thread.stackSize`) and pins every VM call to that thread's serial
-queue, so the whole VM lifetime stays single-threaded.
+### `mruby-io` without fork and exec
+
+Setting `PICORB_PLATFORM_POSIX` brings in `mruby-io`, whose posix HAL implements
+`IO.popen` with `fork` and `exec` — both forbidden by the watchOS SDK, so that
+HAL will not compile here. `mruby-io` is upstream mruby's submodule and is not
+patched. Instead the build config uses mruby's external HAL provider convention,
+where a gem named `hal-<short>-<conf>` replaces a port's objects:
+`conf.gem core: "hal-io-darwin"` supplies the same code minus the spawning. iOS
+and macOS do not need this and keep the posix HAL.
+
+### A large VM thread stack
+
+watchOS gives `DispatchQueue` worker threads a stack too small for mruby VM plus
+prism compiler initialization. `VMExecutor` therefore runs the VM on a dedicated
+`Thread` with an explicit 4 MB stack (`Thread.stackSize`) and pins every VM call
+to that thread's serial queue, keeping the whole VM lifetime single-threaded.
 
 ## Files
 
 The VM, the C bridge (`../../../bridge`), and the build configs
-(`../../../build_config`) live at the repo root; this directory is the app plus
-`app.rb`.
+(`../../../build_config`) live at the repository root; this directory is the app
+plus `app.rb`.
 
-- `app.rb` — the LED state machine (`LEDApp#tick` / `#toggle`), bundled as a resource
-- `Sources/VMExecutor.swift` — dedicated 4 MB-stack thread that owns the VM, the
-  0.1s tick timer, and `toggle()`
+- `app.rb` — the state machine (`LEDApp#tick`, `#toggle`), bundled as a resource.
+- `Sources/VMExecutor.swift` — the dedicated 4 MB-stack thread that owns the VM,
+  the 0.1 s tick timer, and `toggle()`.
 - `Sources/ContentView.swift` — the red/blue circle `Text`, `.onTapGesture` to
-  toggle, `.onAppear` to boot
-- `Sources/App.swift` — the `@main` watchOS app entry
-- `Sources/WatchLEDToggle-Bridging-Header.h` — exposes the C VM bridge to Swift
-- `project.yml` — xcodegen project: `WKWatchOnly`, links `-lmruby`, mirrors the
-  ABI defines
+  toggle, `.onAppear` to boot.
+- `Sources/App.swift` — the `@main` watchOS app entry point.
+- `Sources/WatchLEDToggle-Bridging-Header.h` — exposes the C VM bridge to Swift.
+- `project.yml` — the xcodegen project: `WKWatchOnly`, links `-lmruby`, mirrors
+  the ABI defines.
 
-## Build & run
-
-The app runs on the watchOS Simulator and on a physical Apple Watch.
+## Build and run
 
 ### Simulator
 
@@ -136,21 +150,29 @@ rake watchos:led:all     # lib -> gen -> build -> boot a watch sim -> install ->
 
 Before the first device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in
 `project.yml` with your own Team ID — see
-[On-device builds](../../../README.md#on-device-builds) for details.
+[Running on a device](../../../README.md#running-on-a-device).
 
 ```sh
-rake watchos:led:device:all   # lib (+ arm64_32 recompile) -> gen -> build -> install -> launch
+rake watchos:led:device:all   # lib (+ arm64_32 pass) -> gen -> build -> install -> launch
 ```
 
-Or step by step: `rake watchos:led:device:lib && rake watchos:led:gen &&
-rake watchos:led:device:build && rake watchos:led:device:run`. `:run` finds the
-paired watch via `xcrun devicectl list devices` automatically.
+Or step by step:
 
-On launch the console shows `booted` then `VM opened` (the boot Ruby ran and the
-VM is live); tapping the screen flips the circle between red and blue.
+```sh
+rake watchos:led:device:lib
+rake watchos:led:gen
+rake watchos:led:device:build
+rake watchos:led:device:run     # finds the paired watch via xcrun devicectl
+```
+
+`rake watchos:led:device:check` links for a generic watchOS device with signing
+disabled, so you can catch SDK-level breakage without a watch attached.
+
+On launch the console shows `booted` and then `VM opened` — the boot Ruby ran
+and the VM is live. Tapping the screen flips the circle between red and blue.
 
 Device notes:
 
 - The first launch of the bundle id needs a one-time on-device trust.
 - If the watch is locked, `:run` fails with
-  `FBSOpenApplicationErrorDomain error 7 Locked` — unlock it and re-run.
+  `FBSOpenApplicationErrorDomain error 7 Locked`. Unlock it and re-run.

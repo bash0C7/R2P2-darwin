@@ -1,14 +1,22 @@
-# virtual-peripheral — Rubyで書くBLEペリフェラル
+# virtual-peripheral — RubyでBLEペリフェラルを書く
 
 English: [README.md](README.md)
 
-PicoRuby主導の仮想BLEペリフェラルです。BLEセントラルをデバッグするためのテストスタブとして使えます。`PBLE-TEST`という名前でHeart Rate GATTサービスをadvertiseし、readへの応答・writeの処理・notificationの送出まで、その振る舞いのすべてを`app.rb`が決めます。AppleのCoreBluetooth frameworkはpicoruby-bleのDarwin port越しに駆動され、アプリ側にSwiftのCoreBluetoothコードはありません。
+iPhoneをBLEのGATTペリフェラルとして動かすexampleです。判断はすべてRuby側で
+行います。`PBLE-TEST`という名前でHeart Rateサービスをアドバタイズし、readに
+応答し、writeを処理し、notifyを流します。BLEセントラルをデバッグしていて実機の
+挙動に依存したくないとき、テスト用スタブとして使えます。
 
-## 仕組み
+AppleのCoreBluetoothは picoruby-ble のdarwin port経由で駆動します。アプリ側に
+SwiftのCoreBluetoothコードは1行もありません。
 
-GATTサーバとしての振る舞いはすべて`app.rb`にあります。`BLE`のサブクラスです。
+## しくみ
+
+GATTサーバの振る舞いはすべて`app.rb`に、`BLE`のサブクラスとして書かれています。
 
 ```ruby
+require "ble"
+
 class VirtualPeripheral < BLE
   def initialize
     db = BLE::GattDatabase.new do |gatt|
@@ -19,27 +27,57 @@ class VirtualPeripheral < BLE
     super(:peripheral, db.profile_data)
 ```
 
-- いつadvertiseするか、readに何を返すか、writeをどう処理するか、いつnotifyするかをRubyが決めます。
-- picoruby-bleのperipheral API（`start`、`advertise`、`push_read_value`、`pop_write_value`、`notify`、`request_can_send_now_event`）を呼び、Darwin port（`ports/darwin/`、後述の「依存」参照）がそれを`CBPeripheralManager`の操作に変換します。
-- このexampleのSwiftはVMホスト（VMをtickするタイマー）と読み取り専用のログ表示だけです。
-- 「このBLEデバイスが何をするか」はrp2040ボード上と全く同じくRubyです。同じ`app.rb`と同じpicoruby-ble APIがどちらのターゲットでも動き、違うのは下層のport（ここではCoreBluetooth、rp2040ではBTstack）だけです。
+- いつアドバタイズするか、各readが何を返すか、writeにどう応えるか、いつnotifyを
+  出すかは、すべてRubyが持ちます。
+- Rubyが呼ぶのは picoruby-ble のペリフェラルAPI（`start`、`advertise`、
+  `push_read_value`、`pop_write_value`、`notify`、
+  `request_can_send_now_event`）で、darwin portがそれを
+  `CBPeripheralManager`の操作へ変換します。
+- ここでのSwiftはVMのホスト（VMを叩くタイマー）と読み取り専用のログビューだけです。
+- 「このBLEデバイスは何をするのか」はRubyの問いです。rp2040ボード上でもまったく
+  同じで、同じ`app.rb`が同じ picoruby-ble APIに対して動きます。違うのは下の
+  portだけ（ここではCoreBluetooth、rp2040ではBTstack）。
 
-### イベントループモデル
+### イベントループ
 
-`app.rb`は起動時に一度だけ開かれる永続VMの中で動きます。`BLE#start(timeout_ms)`がpicoruby-bleの正規のイベントループです。無線を有効化し、内部のイベントキューでブロックし（VM bridgeがすべての`vm_call`をtask内でdispatchするので合法です）、イベントを配送し、timeoutで無線を止めます。`VMExecutor`は`vm_call("tick")`を連続的に呼び、各`tick`は1回の有界な`start(WINDOW_MS)` windowなので、ペリフェラルはほぼすべての実時間をイベントループの中で過ごします。window内では次の処理が走ります。
+`app.rb`は起動時に1度開かれる永続VMの中で動きます。`BLE#start(timeout_ms)`が
+picoruby-ble の正統なイベントループで、無線をonにし、内部イベントキューでblockし、
+イベントをdispatchし、タイムアウトで無線をoffにします。blockが許されるのは、
+ブリッジがすべての`vm_call`をmrubyのtask内でdispatchするからです。popはroot
+contextでraiseせずスケジューラ上でparkします。
+
+`VMExecutor`は`vm_call("tick")`を継続的に呼び、`tick` 1回が
+`start(WINDOW_MS)`の有界ウィンドウ1つ（1000ms）に対応します。したがって
+ペリフェラルは実時間のほぼ全域をイベントループの中で過ごします。ウィンドウ内では:
 
 - `packet_callback`がportのイベントを受け取り、先頭バイトで分岐します。
-  - `0x60` — サービス登録完了・無線有効。ADデータをadvertiseします。
-  - `0xB5` — MTU交換完了。セントラルが接続しています。
-  - `0xB7` — CAN_SEND_NOW。次の心拍値を積んで`notify`します。
-  - `0x05` — セントラルが切断しました。
-- `heartbeat_callback`（約1 Hz）が定常処理を行います。CCCDハンドルへの`pop_write_value`でsubscribe / unsubscribeを切り替え、controlハンドルへの`pop_write_value`でHeart Rate Control Pointへのwriteを受け取り、subscribe中は`request_can_send_now_event`を要求します — notificationはheartbeatごとに1件です。
 
-windowが閉じると無線が止まり、CoreBluetoothのadvertiseも止まります。次のwindowの入り口（`tick`）で再advertiseするので、advertiseの再開はwindowあたり最大1回です。`tick`は値を返しません。ログ行を`print`し、`vm_call`がそれをcaptured stdoutとして返して画面上のログになります。
+  | バイト | 意味 | Rubyがやること |
+  |---|---|---|
+  | `0x60` | サービス登録完了、無線が動いている | ADデータをアドバタイズ |
+  | `0xB5` | MTU交換完了 | セントラルが居る |
+  | `0xB7` | CAN_SEND_NOW | 次のHR値をpushして`notify` |
+  | `0x05` | 切断 | アドバタイズ状態へ戻る |
 
-### profileは正規のビルダーで組み立てます
+- `heartbeat_callback`が約1Hzで定常処理をします。CCCDハンドルへの
+  `pop_write_value`がsubscribe / unsubscribeを切り替え、controlハンドルへの
+  `pop_write_value`がHeart Rate Control Pointのwriteを受け取り、subscribe中は
+  `request_can_send_now_event`のペースを作ります（1拍につきnotify 1回）。
 
-BTstackのATT-DB `profile_data`は`BLE::GattDatabase`が、AD-TLVの`adv_data`は`BLE::AdvertisingData`が組み立てます — rp2040と同じビルダーが、起動時にデバイス上で動きます。ビルダーが必要とする`Array#pack` / `String#setbyte`などはvperiphのbuild configが持っています（`mruby-pack`、`mruby-string-ext`、`mruby-sprintf`）。ATTハンドルはハードコードせず`db.handle_table`から読み戻します。
+ウィンドウを閉じると無線がoffになりCoreBluetoothのアドバタイズも止まります。
+次の`tick`が入り口で張り直すので、アドバタイズの再開はウィンドウあたり高々1回
+です。`tick`は値を返さずログ行を`print`し、それを`vm_call`が捕捉stdoutとして
+返して画面のログになります。
+
+### プロファイルは起動時にデバイス上で組み立てられる
+
+`BLE::GattDatabase`がBTstackのATT-DB `profile_data`を、
+`BLE::AdvertisingData`がAD-TLVの`adv_data`を組み立てます。rp2040が使うのと同じ
+ビルダが、事前に焼き込まれるのではなく起動時に端末上で走ります。
+
+これらは`Array#pack`や`String#setbyte`などを必要とするため、このexampleの
+ビルド設定は縮小版のgem集合に`mruby-pack`・`mruby-string-ext`・`mruby-sprintf`を
+足しています。ATTハンドルはハードコードせず`db.handle_table`から読み戻します。
 
 ```ruby
 hr = db.handle_table[HR_SERVICE][HR_MEASUREMENT]
@@ -47,57 +85,83 @@ hr = db.handle_table[HR_SERVICE][HR_MEASUREMENT]
 @cccd_handle = hr[CLIENT_CHARACTERISTIC_CONFIGURATION]
 ```
 
-## 公開するprofileの変更
+## 公開プロファイルを変える
 
-サービス・キャラクタリスティック・advertise名を変えるには、`app.rb`の`BLE::GattDatabase.new`ブロックと`BLE::AdvertisingData.build`ブロックを直接編集します。ハンドルは組み立て順に沿って`handle_table`から自動で得られます。
+`app.rb`の`BLE::GattDatabase.new`ブロックと`BLE::AdvertisingData.build`ブロックを
+編集します（サービス、キャラクタリスティック、アドバタイズ名）。ハンドルは
+`handle_table`経由でビルド順に自動追従するので、他に直す箇所はありません。
 
-- ハンドルは255以下に保ってください。Darwin portのイベントレイアウトはハンドルを1バイトで読みます。
+制約が1つ。ハンドルは255以下に保ってください。darwin portのイベント配置がこれを
+1バイトとして読みます。
 
-## ファイル構成
+## ファイル
 
-VM bridgeとbuild configはrepo root（`../../../bridge`、`../../../build_config`）にあり、このディレクトリにあるのはアプリ本体・`app.rb`・`tools/`ヘルパーです。
+VMブリッジとビルド設定はリポジトリのルート（`../../../bridge`、
+`../../../build_config`）にあります。このディレクトリにあるのはアプリと
+`app.rb`、そしてヘルパツール1つです。
 
-- `app.rb` — ペリフェラル本体。`GattDatabase` / `AdvertisingData`によるprofile、tickごとの`start` window、そして`packet_callback` / `heartbeat_callback` / read / write / subscribe / notifyの実挙動。
-- `Sources/VMExecutor.swift` — VM（`vm_open` / `vm_call`）とtickタイマーを保有する単一のシリアルスレッド。
-- `Sources/ContentView.swift` — tickがprintした出力を流す読み取り専用ログ。
-- `Sources/App.swift` — `@main`のアプリエントリ。
-- `Sources/VirtualPeripheral-Bridging-Header.h` — CのVMブリッジをSwiftに公開するヘッダ。
-- `tools/ble_write.swift` — `PBLE-TEST`をスキャンして接続し、read・subscribe・writeを行うmacOSのBLEセントラル。
-- `project.yml` — xcodegenプロジェクト。`PicoBLEDarwin`をlink + embedし、Bluetoothのusage stringを宣言します。
+- `app.rb` — ペリフェラル本体。`GattDatabase`と`AdvertisingData`のプロファイル、
+  tickごとの`start`ウィンドウ、そして`packet_callback` /
+  `heartbeat_callback` / read / write / subscribe / notifyの実挙動。
+- `Sources/VMExecutor.swift` — VM（`vm_open`、`vm_call`）とtickタイマーを持つ
+  単一のシリアルスレッド。
+- `Sources/ContentView.swift` — printされたtick出力の読み取り専用スクロールログ。
+- `Sources/App.swift` — `@main`のエントリポイント。
+- `Sources/VirtualPeripheral-Bridging-Header.h` — C VMブリッジをSwiftへ公開。
+- `tools/ble_write.swift` — `PBLE-TEST`をスキャンして接続し、read / subscribe /
+  writeするmacOS側BLEセントラル。
+- `project.yml` — xcodegenのプロジェクト定義。`PicoBLEDarwin` Swiftパッケージを
+  リンク・埋め込みし、Bluetoothの用途文字列を宣言する。
 
 ## 依存
 
-このexampleにはpicoruby-bleのCoreBluetooth Darwin portが必要です。portは`bash0C7/picoruby` forkの`port-darwin` branchにあります。このbranchはupstream masterに、picoruby-bleの`ports/darwin/`（CoreBluetooth上のBLE peripheral / central port）と、C portが呼び出しアプリがリンクする`PicoBLEDarwin` Swift package（`ports/darwin/ext`）を加えた完全なpicorubyツリーです。
+このexampleには picoruby-ble のCoreBluetooth darwin portが要ります。
+`ports/darwin/`（BLEのペリフェラル/セントラルport）と、その下の
+`ports/darwin/ext`にある`PicoBLEDarwin` Swiftパッケージ（C portが呼び、アプリが
+リンクする）です。
 
-- このforkとbranchがrepoのdefault `PICORUBY_REPO` / `PICORUBY_REF`です。通常のcheckoutで`rake setup`を実行すれば`vendor/picoruby`にfetchされるので、追加でcloneするものはありません。
-- build configと`project.yml`はpicoruby-bleを`vendor/picoruby`から読みます。
-- upstream masterにDarwin BLE portはありません。別のツリーをfetchする場合はenvで上書きします: `PICORUBY_REPO=https://github.com/picoruby/picoruby.git PICORUBY_REF=master rake setup`
-- picoruby-ble gemを別の場所に置いている場合は、`PICORUBY_BLE_GEMDIR`でgemディレクトリだけを上書きできます。
+本リポジトリの既定の`PICORUBY_REPO` / `PICORUBY_REF`は既にそれらを持つツリーを
+指しているので、素のチェックアウトで`rake setup`すれば足ります。追加でcloneする
+ものはありません。[vendorの取得元](../../../README_jp.md#vendorの取得元)を参照。
+upstreamの`picoruby/picoruby` masterにdarwinのBLE portはありません。
+
+`PICORUBY_BLE_GEMDIR`は picoruby-ble のgemディレクトリだけを差し替えます。vendor
+ツリー全体を向け替えずに、そのgemの別チェックアウトで作業したいとき用です。
 
 ## ビルドと実行
-
-Simulatorと接続した実機の両方で動かせます。3つ目のtaskはmacOS側のセントラルヘルパーを実行します。
 
 ### Simulator
 
 ```sh
-rake ios:vperiph:all          # Simulatorパイプライン: lib -> gen -> build -> run
+rake ios:vperiph:all          # lib -> gen -> build -> run
 ```
 
-- SimulatorでもVMは起動して`app.rb`は動きますが、SimulatorのCoreBluetoothは`poweredOn`に到達しないため、advertiseを含む無線の挙動には実機が必要です。
+SimulatorでもVMは起動して`app.rb`は走りますが、SimulatorのCoreBluetoothは
+`poweredOn`に到達しません。アドバタイズと無線の挙動には実機が要ります。この
+ターゲットで確認できるのはビルドがリンクしVMが動くことまでです。
 
 ### 実機
 
-`project.yml`は実機署名用の`DEVELOPMENT_TEAM`を持っています。このrepoの所有者でない場合は自分のApple Team IDに置き換えてください。詳細は[実機ビルド](../../../README_jp.md#実機ビルド)を参照してください。
+最初の実機ビルドの前に、`project.yml`の`DEVELOPMENT_TEAM: YOUR_TEAM_ID`を自分の
+Team IDに置き換えてください。詳細は
+[実機で動かす](../../../README_jp.md#実機で動かす)を参照。初回起動時にiOSが
+Bluetooth許可を1度尋ねます。
 
 ```sh
-rake ios:vperiph:device:all   # 接続した実機: build、署名、install、launch
+rake ios:vperiph:device:all   # lib -> gen -> build（署名）-> install -> launch
 ```
 
-`rake ios:vperiph:write`は`tools/ble_write.swift`をビルドして実行する、ペリフェラルを叩くmacOS BLEセントラルヘルパーです。
+### Macから叩く
+
+`rake ios:vperiph:write`は`tools/ble_write.swift`をコンパイルして実行します。
+ペリフェラルをスキャンして接続し、read / subscribe / writeするmacOS側の
+BLEセントラルです。
 
 ```sh
-rake ios:vperiph:write        # ペリフェラルを叩くmacOS BLEセントラルヘルパー
+rake ios:vperiph:write
+WRITE_HEX=01 rake ios:vperiph:write   # Heart Rate Control Point へ 0x01 を write
 ```
 
-`WRITE_HEX`・`TARGET_NAME`・`APP_SERVICES`は環境変数で渡せます。たとえば`WRITE_HEX=01 rake ios:vperiph:write`はHeart Rate Control Pointに`0x01`を書き込み、`app.rb`がそのバイト列をログに出して模擬心拍数をリセットします。
+`WRITE_HEX`・`TARGET_NAME`・`APP_SERVICES`は環境変数で渡します。`WRITE_HEX=01`
+なら`app.rb`が受け取ったバイト列をログに出し、模擬心拍値をリセットします。Mac
+から端末上のRubyへ渡り、ログへ返ってくる往復が見られます。

@@ -1,27 +1,22 @@
-# stackchan — Stack-chan BLE central in Ruby
+# stackchan — a Stack-chan BLE central in Ruby
 
 日本語版: [README_jp.md](README_jp.md)
 
 A PicoRuby BLE central that connects to a
 [Stack-chan](https://github.com/meganetaaan/stack-chan) robot running the
-`stackchan-picoruby` firmware and drives its face, LED, head servos, and torque
-over the Nordic UART Service (NUS). The entire BLE logic lives in `app.rb`;
-Swift only hosts the VM and forwards button taps.
+`stackchan-picoruby` firmware and drives its face, LED, head servos, and servo
+torque over the Nordic UART Service (NUS). All of the BLE logic lives in
+`app.rb`; Swift hosts the VM and forwards button taps.
+
+Where [virtual-peripheral](../virtual-peripheral/README.md) makes the phone a
+BLE *peripheral*, this example makes it a *central* — the other half of
+picoruby-ble's darwin port, exercised against real hardware.
 
 ## How it works
 
-`app.rb` is bundled, fixed Ruby — not user-editable and not downloaded;
-PicoRuby is simply the implementation language for the app's own behavior
-(clear of App Review Guideline 2.5.2).
-
-- `picoruby-ble` central role (scan -> connect -> GATT discovery -> NUS RX
-  write) driven by the Darwin / CoreBluetooth port — no Swift CoreBluetooth
-  code.
-- An example-scoped build config adding the stdlib gems `picoruby-ble`'s
-  mrblib needs (`mruby-pack`, `mruby-string-ext`, `mruby-sprintf`) without
-  touching the minimal base config shared by other examples.
-- A frame codec verifiable on host CRuby (`test_frames.rb`) with no BLE
-  hardware.
+`app.rb` is bundled, fixed Ruby: not user-editable and not downloaded. PicoRuby
+is simply the implementation language for the app's own behaviour, which keeps
+it clear of App Review Guideline 2.5.2.
 
 ```
 ContentView.swift  (buttons)
@@ -30,118 +25,142 @@ ContentView.swift  (buttons)
 VMExecutor.swift   (single VM thread)
       │  C bridge
       ▼
-app.rb  $app = Stackchan.new
-  Stackchan#connect   → RealBleLink#connect
-  Stackchan#face/led/head/torque → RealBleLink#write → BLE::write_value_of_characteristic_without_response
+app.rb   $app = Stackchan.new
+  Stackchan#connect              → RealBleLink#connect
+  Stackchan#face/led/head/torque → RealBleLink#write
+                                 → BLE::write_value_of_characteristic_without_response
       │
       ▼
-picoruby-ble (Darwin port)  →  PicoBLEDarwin Swift package  →  CoreBluetooth
+picoruby-ble (darwin port) → PicoBLEDarwin Swift package → CoreBluetooth
 ```
 
-- `BLE_AVAILABLE` is probed at boot: on the device / Simulator (BLE linked)
-  it is true and `RealBleLink` drives the radio; under host CRuby
-  (`test_frames.rb`) it is false and the recording `BleLink` stub captures
-  frames for assertion.
+- The central role — scan, connect, GATT discovery, NUS RX write — is driven
+  through the darwin / CoreBluetooth port. There is no Swift CoreBluetooth code.
 - `VMExecutor` owns the one serial VM thread and posts a periodic `tick`;
   `Stackchan#tick` pumps BLE events while connected.
-- Frames written before the NUS RX handle is bound are queued and flushed
-  once `connect` succeeds.
+- Frames written before the NUS RX handle is bound are queued and flushed once
+  `connect` succeeds, so a button pressed early is not lost.
+
+### One source file, two environments
+
+`app.rb` runs both inside the app and under host CRuby, and decides which at
+load time:
+
+```ruby
+BLE_AVAILABLE = ...   # is picoruby-ble's BLE class linked into this VM?
+```
+
+On a device or the Simulator the BLE gem is linked, so `BLE_AVAILABLE` is true
+and `RealBleLink` drives the radio. Under host CRuby it is false, and a
+recording `BleLink` stub captures frames for assertion instead. Every reference
+to the `BLE` class is guarded behind that constant, which is why the file has no
+`require_relative` and no module namespacing — it is one source, loaded whole,
+in both worlds.
+
+## Frame codec
+
+`FrameCodec` in `app.rb` encodes every frame. Because of the split above, it
+runs under host CRuby with no device, no build, and no BLE hardware:
+
+```sh
+ruby examples/ios/stackchan/test_frames.rb   # all PASS
+```
+
+One deliberate asymmetry to leave alone: the API's `"left"` and `"right"` are
+Stack-chan's own perspective (its hands), and the firmware wires them reversed,
+so `"left"` becomes `R` on the wire. `SIDE_TO_CHAR` matches the hardware and is
+load-bearing — do not "fix" it.
 
 ## Hardware
 
-The example needs hardware at both ends of the BLE link:
+Both ends of the BLE link are real:
 
-- iPhone running iOS 17+ (any BLE-capable model).
-- Stack-chan robot flashed with the `stackchan-picoruby` firmware — it
+- An iPhone running iOS 17 or later (any BLE-capable model).
+- A Stack-chan robot flashed with the `stackchan-picoruby` firmware. It
   advertises as `StackChan-PicoRuby-<suffix>` and exposes NUS.
 
 ## Controls
 
-Each button posts one `vm_call` onto the VM thread; the encoded frame is
+Each button posts one `vm_call` onto the VM thread, and the encoded frame is
 written to the NUS RX characteristic.
 
-- Face — neutral / smile / joy / surprised / sad / angry: sends `<F:N>`
-  (N is the face index).
-- LED — red / green / blue / yellow / white / off: sends
-  `<L:1,R:r,G:g,B:b,S:B,M:s>` (both sides, solid mode).
-- Head — Left: yaw left 40°, 400 ms.
-- Head — Center: yaw 0°, pitch 0°, 400 ms (reset).
-- Head — Right: yaw right 40°, 400 ms.
-- Head — Up: pitch up 30°, 400 ms.
-- Torque — On / Off: enable / disable the servos.
-
-## Frame codec
-
-`FrameCodec` in `app.rb` encodes every frame. The codec runs on host CRuby,
-so it is testable without a device, a build, or BLE hardware:
-
-```
-ruby examples/ios/stackchan/test_frames.rb   # all PASS, no BLE hardware needed
-```
-
-- API "left"/"right" are Stack-chan's own perspective (its hands); the
-  firmware wires them reversed, so "left" becomes `R` on the wire.
-  `SIDE_TO_CHAR` matches the hardware and is load-bearing — do not "fix" it.
+| Control | Frame |
+|---|---|
+| Face — neutral / smile / joy / surprised / sad / angry | `<F:N>`, N being the face index |
+| LED — red / green / blue / yellow / white / off | `<L:1,R:r,G:g,B:b,S:B,M:s>`, both sides, solid mode |
+| Head — Left | yaw left 40°, 400 ms |
+| Head — Center | yaw 0°, pitch 0°, 400 ms (reset) |
+| Head — Right | yaw right 40°, 400 ms |
+| Head — Up | pitch up 30°, 400 ms |
+| Torque — On / Off | enable or disable the servos |
 
 ## Build config
 
-`build_config/r2p2-picoruby-ios-stackchan-{device,sim}.rb` extends the base
-VM with:
+`build_config/r2p2-picoruby-ios-stackchan-{sim,device}.rb` starts from the
+reduced gem set and adds:
 
-- `picoruby-ble` — Darwin port selected via `conf.ports :darwin`; its declared
-  `picoruby-mbedtls` / `picoruby-cyw43` dependencies are stripped (the Darwin
-  C path references neither).
-- `mruby-string-ext` — `String#<<` used in `ble_utils.rb`.
-- `mruby-pack` — `Array#pack` / `require 'pack'` used in `ble_utils.rb`.
-- `mruby-sprintf` — `Kernel#sprintf` used in `ble_central.rb` debug
-  interpolations.
+- **`picoruby-ble`**, with its darwin port selected by
+  `conf.ports :darwin, :posix`. Its `picoruby-cyw43` dependency (the rp2040
+  radio) drops out through the gem's own `build.darwin?` guard. Its
+  `picoruby-mbedtls` dependency stays, and must: `ble.rb` does
+  `require 'mbedtls'` at boot and the GATT database hash uses `MbedTLS::CMAC`,
+  so removing it leaves the BLE Ruby layer unloaded and `BLE.new` fails with a
+  `wrong number of arguments` error. The mbedtls and rng darwin ports build fine
+  for iOS, taking their entropy from `SecRandomCopyBytes`; the app links
+  `-framework Security` for it.
+- **`mruby-string-ext`** — `String#<<`, used in picoruby-ble's `ble_utils.rb`.
+- **`mruby-pack`** — `Array#pack` and `require 'pack'`, also in `ble_utils.rb`.
+- **`mruby-sprintf`** — `Kernel#sprintf`, used in `ble_central.rb`'s debug
+  interpolation.
 
-The three stdlib gems are part of PicoRuby's `stdlib.gembox` (vm_mruby
-branch), which every rp2040 build includes. The base iOS config omits them to
-keep the REPL lean; this example adds them, example-scoped.
+Those three mruby gems come from picoruby's bundled mruby tree
+(`mrbgems/picoruby-mruby/lib/mruby/mrbgems`) and are pulled in by directory. An
+rp2040 build gets them through PicoRuby's `stdlib` gembox, which the reduced gem
+set omits to keep the link small — so this example adds them, scoped to its own
+config rather than to a shared base.
 
-## Build & run
+## Build and run
 
 ### Simulator
 
-`rake ios:stackchan:all` (lib -> gen -> build -> run). No peripheral answers
-on the Simulator, so scan simply times out.
+```sh
+rake ios:stackchan:all      # lib -> gen -> build -> run
+```
+
+No peripheral answers on the Simulator, so the scan simply times out. This
+target verifies that the build links and the VM runs.
 
 ### Device
 
 Before the first on-device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in
 `project.yml` with your own Team ID — see
-[On-device builds](../../../README.md#on-device-builds) for details.
+[Running on a device](../../../README.md#running-on-a-device).
 
-```
-# 1. Build BLE-enabled libmruby.a for the connected iPhone
-rake ios:stackchan:device:lib
-
-# 2. Generate and sign the Xcode project, then build
-rake ios:stackchan:gen
-rake ios:stackchan:device:build
-
-# 3. Install and launch (streams console output)
-rake ios:stackchan:device:run
-
-# Or all in one step:
+```sh
 rake ios:stackchan:device:all
 ```
 
-First launch: iOS prompts for Bluetooth permission — allow it.
+Or step by step:
 
-## Known constraints
+```sh
+rake ios:stackchan:device:lib     # BLE-enabled libmruby.a for the device SDK
+rake ios:stackchan:gen            # generate the Xcode project
+rake ios:stackchan:device:build   # build, signed
+rake ios:stackchan:device:run     # install and launch, streaming the console
+```
 
-Constraints that apply when running on a device:
+On first launch, iOS asks for Bluetooth permission — allow it.
 
-- Bluetooth permission: `NSBluetoothAlwaysUsageDescription` is set in
+## Constraints when running on hardware
+
+- **Bluetooth permission.** `NSBluetoothAlwaysUsageDescription` is set in
   `project.yml`. Without it `CBCentralManager` never reaches `.poweredOn` and
-  scan is a no-op.
-- Scan timeout: `scan(timeout_ms: 30000)` covers the full connect -> GATT
-  discovery -> TC_IDLE cycle (multiple BLE round trips at 100 ms polling).
-  Reduce only after measuring on your hardware.
-- Free Personal Team: iOS limits installed apps to 3. On install error
-  3002, remove one with
-  `xcrun devicectl device uninstall app --device <UDID> <bundleid>`.
-- Device lock: launch fails with `FBSOpenApplicationServiceErrorDomain error 1`
-  when the screen is locked — unlock the device first.
+  the scan is a no-op.
+- **Scan timeout.** `scan(timeout_ms: 30000)` has to cover the whole
+  connect → GATT discovery → idle cycle, which is several BLE round trips at
+  100 ms polling. Shorten it only after measuring on your own hardware.
+- **Free Personal Team app limit.** iOS allows three installed apps. Install
+  error 3002 means you are at the limit; remove one with
+  `xcrun devicectl device uninstall app --device <UDID> <bundle-id>`.
+- **Device lock.** Launch fails with `FBSOpenApplicationServiceErrorDomain
+  error 1` when the screen is locked. Unlock the phone first.

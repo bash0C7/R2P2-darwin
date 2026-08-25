@@ -157,7 +157,7 @@ compiler inside the app. Each has its own README.
 | [ios/repl](examples/ios/repl/README.md) | `ios:repl` (also plain `ios`) | evaluate Ruby typed into the app at runtime |
 | [ios/networking](examples/ios/networking/README.md) | `ios:net` | `Net::HTTP` over picoruby-socket's darwin port — TLS through mbedTLS, no `URLSession`, no OpenSSL |
 | [ios/virtual-peripheral](examples/ios/virtual-peripheral/README.md) | `ios:vperiph` | a BLE GATT peripheral written in Ruby, over CoreBluetooth |
-| [ios/iphone-torch](examples/ios/iphone-torch/README.md) | `ios:torch` | the iPhone "L チカ": the flashlight blinked from a Ruby loop |
+| [ios/iphone-torch](examples/ios/iphone-torch/README.md) | `ios:torch` | the iPhone "Lチカ": the flashlight blinked from a Ruby loop |
 | [ios/stackchan](examples/ios/stackchan/README.md) | `ios:stackchan` | a BLE central driving a [Stack-chan](https://github.com/meganetaaan/stack-chan) robot over NUS |
 | [ios/tilt-synth](examples/ios/tilt-synth/README.md) | `ios:tiltsynth` | Device Motion to FM synthesis, with the musical mapping in Ruby |
 | [watchos/led-toggle](examples/watchos/led-toggle/README.md) | `watchos:led` | a Ruby state machine on the Apple Watch (`arm64_32`) |
