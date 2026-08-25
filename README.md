@@ -217,19 +217,6 @@ darwin port first (`conf.ports :darwin, :posix`): `networking` (its TLS would
 need OpenSSL), `virtual-peripheral`, `stackchan`, and the watchOS build. Any
 fork/branch carrying these works — the vendor is not pinned to one ref.
 
-### Temporary: the estalloc submodule points at a fork
-
-`port-darwin` currently redirects the `mrbgems/picoruby-machine/lib/estalloc`
-submodule to `bash0C7/estalloc` (pin `172d961`) — upstream
-`picoruby/estalloc@672da780` plus one fix: `PLATFORM_64BIT` is detected from
-the pointer width (`UINTPTR_MAX`) instead of an architecture-macro list, because
-`__aarch64__` is also defined on watchOS device builds (arm64_32, ILP32) and
-the misdetection corrupts the TLSF allocator at boot on a real Apple Watch.
-The detection result is unchanged on every other target (rp2040 / esp32 /
-LP64 hosts / iOS). **This redirect is temporary**: once the fix is merged into
-upstream `picoruby/estalloc`, the submodule URL and pin must be pointed back
-at upstream before any release.
-
 ## Verified environment
 
 | | Verified with |

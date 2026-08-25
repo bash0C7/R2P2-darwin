@@ -208,18 +208,6 @@ socket) と `hal-io-darwin` (fork/exec が禁止された watchOS 向けの mrub
 `virtual-peripheral` / `stackchan` / watchOS build — が壊れます。これらを含む
 fork/branch なら何でもよく、vendor を特定の ref に固定する規則ではありません。
 
-### 一時的措置: estalloc submoduleがforkを指しています
-
-`port-darwin`は現在、`mrbgems/picoruby-machine/lib/estalloc` submoduleを
-`bash0C7/estalloc`（pin `172d961`）へ向けています。中身はupstream
-`picoruby/estalloc@672da780` + fix 1件 — `PLATFORM_64BIT`をアーキテクチャ
-マクロの列挙でなくポインタ幅（`UINTPTR_MAX`）で判定します。watchOS実機
-（arm64_32、ILP32）でも`__aarch64__`が定義されるため誤判定となり、Apple Watch
-実機のboot時にTLSF allocatorが壊れるのが理由です。他のターゲット（rp2040 /
-esp32 / LP64ホスト / iOS）では判定結果は変わりません。**このredirectは一時的な
-措置です**: fixがupstream `picoruby/estalloc`へmergeされたら、リリース前に
-submoduleのURLとpinをupstreamへ戻す必要があります。
-
 ## 動作確認済み環境
 
 | | 確認バージョン |
