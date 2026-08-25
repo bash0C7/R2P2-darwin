@@ -70,47 +70,20 @@ unionの中に詰めずに置かれ、整数は64bitのままです。時計上�
 
 ### arm64_32のアーカイブを作る
 
-picorubyのmrubyビルド（`MRuby::CrossBuild`）は`arm64_32`を直接ターゲットに
-しません。archフラグを明示しなければホストarchか`arm64`のオブジェクトを吐きます。
-`rake watchos:led:device:lib`が1タスクでその穴を埋めます。
+picorubyのmrubyビルドは`arm64_32`を直接ターゲットにしません。archフラグを明示
+しなければホストarchか`arm64`のオブジェクトを吐きます。
+`rake watchos:led:device:lib`がその穴を埋めます。クロスビルドしたあと
+`build_config/recompile_arm64_32.rb`を走らせ、Xcodeへ渡る前に`arm64_32`だけの
+`libmruby.a`を再アーカイブします。このスクリプトを自分で叩く必要はありません。
+タスクがやります。
 
-1. `build_config/r2p2-picoruby-watchos-device.rb`でクロスビルドする。
-2. `build_config/recompile_arm64_32.rb`を走らせる。これはビルドディレクトリを
-   歩き、各オブジェクトのソースを`.d`のdepfileから特定し、`-arch arm64_32`で
-   コンパイルし直し、`arm64_32`だけの`libmruby.a`を再アーカイブする。
-3. 結果を`Vendor/lib`へ再配置する。
+### forkもexecも使えない
 
-ビルド設定の`cc.flags`自体が既に`-arch arm64_32`を指しているので、通常このスクリプト
-の再コンパイル対象は0件です。Xcodeへ渡る前にアーカイブが`arm64_32`のみであることを
-確かめるセーフティネットとして働きます。
-
-### ABI defineの単一の真実
-
-`mrb_value`と`mrb_state`のレイアウトを決めるdefine（`MRB_INT64`、
-`MRB_NO_BOXING`、`MRB_BASELINE_PROFILE=1`ほか）は3つの別々のコンパイルに読まれ、
-1バイトも違わず一致していなければなりません。食い違うと、最終アーカイブが異なる
-構造体レイアウトのオブジェクトを混ぜ、実行時にメモリを壊します。
-
-| コンパイル | defineの出どころ |
-|---|---|
-| `rake watchos:led:device:lib`（mrubyのオブジェクト） | `build_config/r2p2-picoruby-watchos-device.rb` |
-| `recompile_arm64_32.rb`（arm64_32のパス） | 自前のリストを持たず、同じビルド設定から`conf.cc.defines`をパースする |
-| Xcode（`picoruby_bridge.c`とアプリ） | `project.yml`の`GCC_PREPROCESSOR_DEFINITIONS` |
-
-`MRB_BASELINE_PROFILE=1`がビルド設定に書かれていない点に注意してください。設定が
-`PICORB_PLATFORM_POSIX`を立てるので`picoruby-mruby`がこのdefineをbuild-wideに
-追加します。`sizeof(mrb_state)`を変えるため、`project.yml`側もこれを写す必要が
-あります。
-
-### forkとexec抜きの`mruby-io`
-
-`PICORB_PLATFORM_POSIX`を立てると`mruby-io`が入りますが、そのposix HALは
-`IO.popen`を`fork`と`exec`で実装しています。watchOS SDKはどちらも禁じているので、
-このHALはそのままではコンパイルできません。`mruby-io`はupstream mrubyのsubmodule
-なので手を入れず、代わりにmrubyの外部HAL provider規約（`hal-<short>-<conf>`という
-名前のgemがportのオブジェクトを置き換える）を使います。
-`conf.gem core: "hal-io-darwin"`が、同じコードからspawnだけを抜いたものを供給
-します。iOSとmacOSにこれは不要で、posix HALのままです。
+watchOS SDKは`fork`と`exec`を禁じています。`puts`の提供元でもある`mruby-io`は
+`IO.popen`をまさにその2つで実装しているため、ビルドは代わりのもの
+（`hal-io-darwin`）を差し込みます。同じコードからspawnだけを抜いたものです。
+したがって時計の上では`IO.popen`が使えません。`mruby-io`のそれ以外はiOSと同じに
+振る舞います。
 
 ### 大きなVMスレッドスタック
 

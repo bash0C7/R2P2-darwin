@@ -96,28 +96,11 @@ written to the NUS RX characteristic.
 
 ## Build config
 
-`build_config/r2p2-picoruby-ios-stackchan-{sim,device}.rb` starts from the
-reduced gem set and adds:
-
-- **`picoruby-ble`**, with its darwin port selected by
-  `conf.ports :darwin, :posix`. Its `picoruby-cyw43` dependency (the rp2040
-  radio) drops out through the gem's own `build.darwin?` guard. Its
-  `picoruby-mbedtls` dependency stays, and must: `ble.rb` does
-  `require 'mbedtls'` at boot and the GATT database hash uses `MbedTLS::CMAC`,
-  so removing it leaves the BLE Ruby layer unloaded and `BLE.new` fails with a
-  `wrong number of arguments` error. The mbedtls and rng darwin ports build fine
-  for iOS, taking their entropy from `SecRandomCopyBytes`; the app links
-  `-framework Security` for it.
-- **`mruby-string-ext`** — `String#<<`, used in picoruby-ble's `ble_utils.rb`.
-- **`mruby-pack`** — `Array#pack` and `require 'pack'`, also in `ble_utils.rb`.
-- **`mruby-sprintf`** — `Kernel#sprintf`, used in `ble_central.rb`'s debug
-  interpolation.
-
-Those three mruby gems come from picoruby's bundled mruby tree
-(`mrbgems/picoruby-mruby/lib/mruby/mrbgems`) and are pulled in by directory. An
-rp2040 build gets them through PicoRuby's `stdlib` gembox, which the reduced gem
-set omits to keep the link small — so this example adds them, scoped to its own
-config rather than to a shared base.
+`build_config/r2p2-picoruby-ios-stackchan-{sim,device}.rb` builds the reduced
+gem set plus `picoruby-ble` and the three stdlib gems its Ruby layer uses —
+`mruby-pack`, `mruby-string-ext`, `mruby-sprintf`. Those three are what make
+`Array#pack` and `sprintf` available to `app.rb` here but not in, say,
+`iphone-torch`.
 
 ## Build and run
 

@@ -72,48 +72,20 @@ integers stay 64-bit. It is the only boxing choice that is correct on the watch.
 
 ### Producing an arm64_32 archive
 
-picoruby's mruby build (`MRuby::CrossBuild`) does not target `arm64_32`
-directly; without explicit arch flags it emits host-arch or `arm64` objects.
-`rake watchos:led:device:lib` closes that gap in one task:
+picoruby's mruby build does not target `arm64_32` directly; without explicit
+arch flags it emits host-arch or `arm64` objects. `rake watchos:led:device:lib`
+closes that gap: it cross-builds, then runs
+`build_config/recompile_arm64_32.rb`, which re-archives an `arm64_32`-only
+`libmruby.a` before it reaches Xcode. You do not have to run that script
+yourself — the task does it.
 
-1. cross-build with `build_config/r2p2-picoruby-watchos-device.rb`;
-2. run `build_config/recompile_arm64_32.rb`, which walks the build directory,
-   finds each object's source through its `.d` depfile, recompiles it with
-   `-arch arm64_32`, and re-archives an `arm64_32`-only `libmruby.a`;
-3. re-stage the result under `Vendor/lib`.
+### No fork, no exec
 
-The build config's own `cc.flags` already target `-arch arm64_32`, so in the
-normal case the script recompiles zero objects and acts as a safety net that
-verifies the archive is `arm64_32`-only before it reaches Xcode.
-
-### One source of truth for the ABI defines
-
-The defines that determine `mrb_value` and `mrb_state` layout — `MRB_INT64`,
-`MRB_NO_BOXING`, `MRB_BASELINE_PROFILE=1`, and the rest — are read by three
-different compilations and must agree byte-for-byte. If they diverge, the final
-archive mixes objects with different struct layouts and corrupts memory at
-runtime.
-
-| Compilation | Where its defines come from |
-|---|---|
-| `rake watchos:led:device:lib` (mruby objects) | `build_config/r2p2-picoruby-watchos-device.rb` |
-| `recompile_arm64_32.rb` (the arm64_32 pass) | parses `conf.cc.defines` out of that same build config, rather than carrying its own list |
-| Xcode (`picoruby_bridge.c`, the app) | `GCC_PREPROCESSOR_DEFINITIONS` in `project.yml` |
-
-Note that `MRB_BASELINE_PROFILE=1` is not written in the build config: since the
-config sets `PICORB_PLATFORM_POSIX`, `picoruby-mruby` adds that define
-build-wide, and `project.yml` has to mirror it because it changes
-`sizeof(mrb_state)`.
-
-### `mruby-io` without fork and exec
-
-Setting `PICORB_PLATFORM_POSIX` brings in `mruby-io`, whose posix HAL implements
-`IO.popen` with `fork` and `exec` — both forbidden by the watchOS SDK, so that
-HAL will not compile here. `mruby-io` is upstream mruby's submodule and is not
-patched. Instead the build config uses mruby's external HAL provider convention,
-where a gem named `hal-<short>-<conf>` replaces a port's objects:
-`conf.gem core: "hal-io-darwin"` supplies the same code minus the spawning. iOS
-and macOS do not need this and keep the posix HAL.
+The watchOS SDK forbids `fork` and `exec`. `mruby-io` — which is where `puts`
+comes from — implements `IO.popen` with exactly those, so the build swaps in a
+replacement (`hal-io-darwin`) that is the same code without the spawning.
+`IO.popen` is therefore absent on the watch; everything else about `mruby-io`
+behaves as it does on iOS.
 
 ### A large VM thread stack
 

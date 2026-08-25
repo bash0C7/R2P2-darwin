@@ -116,14 +116,10 @@ config in this repository defines **both** `PICORB_PLATFORM_POSIX` and
 - `conf.ports :darwin, :posix` picks a gem's `ports/darwin/` when it has one and
   falls back to `ports/posix/` otherwise, resolved per gem at build time.
 
-Two consequences worth knowing up front. Because the darwin port wins outright
-when it exists, each `ports/darwin/` must define every symbol its posix sibling
-would have — it is self-contained, not a patch on top. And because
-`PICORB_PLATFORM_POSIX` is set, `picoruby-mruby` adds `mruby-io` (the source of
-`puts` and `print`), `mruby-task`, and the build-wide define
-`MRB_BASELINE_PROFILE=1`, which affects `sizeof(mrb_state)` — the C bridge must
-be compiled with the same define set, which is why `project.yml` and the build
-config are kept in step.
+One consequence shows up in the Ruby you can write. Because
+`PICORB_PLATFORM_POSIX` is set, `picoruby-mruby` brings in `mruby-io` and
+`mruby-task`, so `puts`, `print`, and `sleep_ms` are available even in the
+smallest gem set below.
 
 ### One vendored checkout, one build directory
 
@@ -270,11 +266,6 @@ archive's extracted members, ignoring the `ar` header timestamps that change on
 every build regardless of code. Equal hashes mean the same inputs really did
 produce the same objects.
 
-One operational note that follows from picoruby's build rules: after changing a
-build config's defines, `rm -rf build/<target>` before rebuilding. The
-per-object compile rule keys on the `.c` file's mtime alone, so an existing
-`.o` is reused and the define change silently fails to take effect.
-
 ## How the pieces fit
 
 ```
@@ -303,10 +294,8 @@ The bridge exposes two shapes, and an example uses one or the other:
   VM for its whole lifetime.
 
 `bridge/task_hal_ios.c` supplies the mruby task-scheduler HAL for iOS and
-watchOS, where the SIGALRM-driven posix HAL is unavailable — it polls instead.
-It defines all six HAL entry points (`mrb_hal_task_init` / `_final` /
-`_idle_cpu` / `_sleep_us`, `mrb_task_enable_irq` / `_disable_irq`), which is
-what keeps the posix `task_hal.o` inside the archive from ever being pulled in.
+watchOS, which have no usable SIGALRM timer — it polls instead. That is what
+makes `sleep_ms` in Ruby block for a real interval on the device.
 
 Gems link statically: every mrbgem named by the build config is compiled into
 `libmruby.a` and nothing is fetched at runtime. A `picoruby-*` gem's C half is
@@ -326,18 +315,11 @@ gembox. Core Ruby with `puts` and `print`, but no `stdlib`: `defined?`,
 `String#ord`, and `String#%` are absent. Used by `virtual-peripheral`,
 `iphone-torch`, `stackchan`, `tilt-synth`, and the watchOS example.
 
-`picoruby-machine` is listed explicitly in the reduced configs because it
-carries the Estalloc heap glue (`mrb_basic_alloc_func`,
-`mrb_open_with_custom_alloc`) that the VM links against; full-gembox configs get
-it through `gembox "core"`.
-
-An example that needs more than the reduced set adds gems to **its own**
-build config, never to a shared one — a gem added to a shared base breaks the
-app link of every example that does not use it, with unresolved symbols.
-`virtual-peripheral` and `stackchan` do exactly this for `mruby-pack`,
-`mruby-string-ext`, and `mruby-sprintf`, which picoruby-ble's Ruby layer needs.
-When bundling new Ruby into an example, probe it against `rake smoke`'s host
-build before relying on it on a device.
+Each example has its own build config, so an example that needs more than the
+reduced set adds gems there rather than to anything shared. That is why
+`virtual-peripheral` and `stackchan` can use `Array#pack` while `iphone-torch`
+cannot. When you bundle new Ruby into an example, try it against `rake smoke`'s
+host build before relying on it on a device.
 
 ## Vendor source
 

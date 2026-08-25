@@ -31,12 +31,9 @@ ContentView (TextEditor + Run)
   opens a fresh VM, compiles and runs `src`, and returns everything written to
   stdout and stderr — compile diagnostics and uncaught-exception backtraces
   included — as a malloc'd string the caller must free.
-- The source is handed to the compiler byte-for-byte, so line numbers in
-  diagnostics match what you typed. `puts` and `print` come from `mruby-io`,
-  which the POSIX-family build includes; no shim is inserted.
-- Output capture is done by redirecting file descriptors 1 and 2 into a
-  temporary file for the duration of the call, so anything the VM or a C gem
-  writes is caught, not just Ruby-level `print`.
+- Output capture redirects file descriptors 1 and 2 into a temporary file for
+  the duration of the call, so anything the VM or a C gem writes is caught, not
+  just Ruby-level `print`.
 - A new VM per Run means every evaluation starts from a clean slate. The VM's
   heap is allocated per call and released wholesale when the call returns.
 - `ContentView.run()` calls it on a background thread and frees the returned
@@ -87,11 +84,7 @@ This example is built by `build_config/r2p2-picoruby-ios-repl-{sim,device}.rb`
 with the full-REPL gem set, so the complete `core` and `stdlib` surface is
 present — the widest of any example in this repository.
 
-- Gemboxes: `mruby-posix` + `core` + `stdlib` + `shell`, with darwin ports
-  preferred over their posix siblings (`conf.ports :darwin, :posix`).
-- The `minimum` gembox is *not* used: its POSIX branch pulls in host-only
-  binaries (`mruby-bin-mrbc`, `picoruby-bin-picoruby`) that a cross-build cannot
-  produce. `mruby-compiler` is added directly instead.
-- Networking gems and OpenSSL are excluded. For HTTP and TLS from Ruby, see the
-  [networking example](../networking/README.md), which links the socket and
-  mbedTLS stack.
+Gemboxes: `mruby-posix` + `core` + `stdlib` + `shell`. Networking is not in
+there — for HTTP and TLS from Ruby, see the
+[networking example](../networking/README.md), which links the socket and
+mbedTLS stack on top of this same gem set.

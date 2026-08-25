@@ -6,7 +6,7 @@ An HTTPS GET where the whole round-trip is PicoRuby. `app.rb` calls `Net::HTTP`
 from picoruby's `picoruby-net-http` gem on top of `picoruby-socket`. On iOS,
 `picoruby-socket`'s darwin port opens a raw BSD socket and runs the TLS
 handshake through mbedTLS, seeded by the `picoruby-mbedtls` and `picoruby-rng`
-darwin entropy ports (`SecRandomCopyBytes`, linked via `-framework Security`).
+darwin entropy ports, which draw randomness from `SecRandomCopyBytes`.
 
 No OpenSSL is involved, and no Apple URL-loading API — no `URLSession`, no
 `CFNetwork`. App Transport Security governs only those APIs, so it does not
@@ -52,16 +52,10 @@ them from a path.
 
 ## Gem set
 
-This example and [repl](../repl/README.md) are the two that use the full-REPL
-gembox set (`mruby-posix` + `core` + `stdlib` + `shell`) rather than the reduced
-gem set the other examples use. That is not a stylistic choice:
-`picoruby-socket`, `picoruby-mbedtls`, and `picoruby-rng` all branch on a
-POSIX-shaped build, which the reduced configs do not provide.
-
-`build_config/r2p2-picoruby-ios-net-{sim,device}.rb` is that gembox set plus
-`picoruby-net-http`, which pulls in `picoruby-socket` and `picoruby-uri`
-itself. It is example-scoped, so the `repl` configs stay networking-free and
-keep linking without the socket and TLS surface.
+`build_config/r2p2-picoruby-ios-net-{sim,device}.rb` builds the same full-REPL
+gembox set as [repl](../repl/README.md) — `mruby-posix` + `core` + `stdlib` +
+`shell` — plus `picoruby-net-http`. So `app.rb` here has the whole Ruby surface
+to work with, not the reduced one the BLE and sensor examples run on.
 
 ## Dependencies
 

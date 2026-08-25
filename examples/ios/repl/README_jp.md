@@ -31,9 +31,6 @@ ContentView（TextEditor + Run）
   新しいVMを開き、`src`をコンパイル・実行し、stdoutとstderrに書かれたすべて
   （コンパイル診断と未捕捉例外のバックトレースを含む）をmalloc済み文字列で
   返します。解放は呼び出し側の責務です。
-- ソースは1バイトも足さずにコンパイラへ渡されるので、診断に出る行番号は打ち
-  込んだものと一致します。`puts`と`print`はPOSIX系ビルドに含まれる`mruby-io`
-  由来で、shimは挿入されません。
 - 出力の捕捉は、呼び出しの間だけファイルディスクリプタ1と2を一時ファイルへ
   リダイレクトする方式です。したがってRubyレベルの`print`だけでなく、VMやC gem
   が書いたものも捕まります。
@@ -86,11 +83,6 @@ rake ios:device:all
 gem集合でビルドします。`core`と`stdlib`の表面がすべて揃っており、本リポジトリの
 exampleの中では最も広い範囲です。
 
-- gembox: `mruby-posix` + `core` + `stdlib` + `shell`。portはposix兄弟より
-  darwinを優先します（`conf.ports :darwin, :posix`）。
-- `minimum` gemboxは**使いません**。POSIX分岐がホスト専用バイナリ
-  （`mruby-bin-mrbc`、`picoruby-bin-picoruby`）を引き込みますが、クロスビルドは
-  それを産出できないためです。代わりに`mruby-compiler`を直接足しています。
-- networking系gemとOpenSSLは外してあります。RubyからHTTPとTLSを使う話は、
-  socketとmbedTLSのスタックをリンクする
-  [networking example](../networking/README_jp.md)にあります。
+gemboxは`mruby-posix` + `core` + `stdlib` + `shell`。networkingは入っていません。
+RubyからHTTPとTLSを使う話は、この同じgem集合の上にsocketとmbedTLSのスタックを
+リンクする[networking example](../networking/README_jp.md)にあります。

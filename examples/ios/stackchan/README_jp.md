@@ -95,27 +95,11 @@ BLEリンクの両端が実機です。
 
 ## ビルド設定
 
-`build_config/r2p2-picoruby-ios-stackchan-{sim,device}.rb`は縮小版のgem集合から
-出発して、次を足します。
-
-- **`picoruby-ble`**。darwin portは`conf.ports :darwin, :posix`で選ばれます。
-  `picoruby-cyw43`依存（rp2040の無線）はgem自身の`build.darwin?`ガードで落ちます。
-  `picoruby-mbedtls`依存は残り、残さねばなりません。`ble.rb`が起動時に
-  `require 'mbedtls'`し、GATTデータベースのハッシュが`MbedTLS::CMAC`を使うため、
-  外すとBLEのRuby層が丸ごと読み込まれず、`BLE.new`が
-  `wrong number of arguments`で落ちます。mbedtlsとrngのdarwin portはiOS向けに
-  問題なくビルドでき、エントロピーは`SecRandomCopyBytes`から取ります。アプリは
-  そのために`-framework Security`をリンクします。
-- **`mruby-string-ext`** — picoruby-bleの`ble_utils.rb`が使う`String#<<`。
-- **`mruby-pack`** — 同じく`ble_utils.rb`の`Array#pack`と`require 'pack'`。
-- **`mruby-sprintf`** — `ble_central.rb`のデバッグ用文字列補間が使う
-  `Kernel#sprintf`。
-
-このmruby gem 3つはpicorubyが同梱するmrubyツリー
-（`mrbgems/picoruby-mruby/lib/mruby/mrbgems`）にあり、ディレクトリ指定で取り込み
-ます。rp2040のビルドはPicoRubyの`stdlib` gembox経由でこれらを得ますが、縮小版の
-gem集合はリンクを小さく保つためgemboxを省いています。そこでこのexampleが、共有の
-ベースではなく自分の設定に閉じた形で足しています。
+`build_config/r2p2-picoruby-ios-stackchan-{sim,device}.rb`は縮小版のgem集合に
+`picoruby-ble`と、そのRuby層が使うstdlib gem 3つ（`mruby-pack`・
+`mruby-string-ext`・`mruby-sprintf`）を足したものです。この3つがあるおかげで、
+ここの`app.rb`では`Array#pack`や`sprintf`が使えます。たとえば`iphone-torch`では
+使えません。
 
 ## ビルドと実行
 

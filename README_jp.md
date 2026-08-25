@@ -115,14 +115,9 @@ iPhoneもApple WatchもMacもDarwin（XNU + BSD libc）で動きます。した�
 - `conf.ports :darwin, :posix`は、gemが`ports/darwin/`を持てばそれを、
   無ければ`ports/posix/`を選びます。判定はgemごとにビルド時に行われます。
 
-ここから直ちに効いてくる帰結が2つあります。darwin portは存在すれば無条件に
-勝つので、各`ports/darwin/`はposix側が提供するsymbolをすべて自前で定義する
-必要があります（差分パッチではなく自己完結）。もう1つ、
-`PICORB_PLATFORM_POSIX`が立つことで`picoruby-mruby`が`mruby-io`（`puts`と
-`print`の提供元）と`mruby-task`、そしてbuild-wideのdefine
-`MRB_BASELINE_PROFILE=1`を追加します。このdefineは`sizeof(mrb_state)`に
-効くため、Cブリッジも同じdefine集合でコンパイルされねばならず、`project.yml`
-とビルド設定を同期させているのはそのためです。
+帰結が1つ、書けるRubyに効きます。`PICORB_PLATFORM_POSIX`が立つことで
+`picoruby-mruby`が`mruby-io`と`mruby-task`を引き込むため、後述のいちばん小さい
+gem集合でも`puts`・`print`・`sleep_ms`が使えます。
 
 ### vendorは1つ、ビルド出力も1箇所
 
@@ -266,11 +261,6 @@ SimulatorはUDID（`SIM_UDID`。既定値はRakefile内）で固定し、コン�
 比較します（コードに関係なく毎回変わる`ar`ヘッダのタイムスタンプは無視）。
 ハッシュが一致すれば、同じ入力が本当に同じオブジェクトを産んだということです。
 
-picorubyのビルドルールから来る運用上の注意が1つ。ビルド設定のdefineを変えたら
-再ビルド前に`rm -rf build/<target>`してください。オブジェクト単位のコンパイル
-ルールは`.c`のmtimeだけを見るので、既存の`.o`が再利用され、define変更が黙って
-効かなくなります。
-
 ## 全体の組み立て
 
 ```
@@ -298,11 +288,9 @@ Vendor/lib/libmruby.a                        prism コンパイラ + mruby VM。
   dispatchされるため、RubyコードはVM自身のイベントキューでblockできます。VMに
   触れるのは生存期間を通じて単一のownerスレッドだけです。
 
-`bridge/task_hal_ios.c`はiOSとwatchOS向けのmruby task scheduler HALです。
-SIGALRM駆動のposix HALが使えないため、pollingで代替します。HALのエントリ6つ
-（`mrb_hal_task_init` / `_final` / `_idle_cpu` / `_sleep_us`、
-`mrb_task_enable_irq` / `_disable_irq`）をすべて定義しており、それによって
-アーカイブ内のposix版`task_hal.o`が引かれずに済んでいます。
+`bridge/task_hal_ios.c`はiOSとwatchOS向けのmruby task scheduler HALです。この
+2つには使えるSIGALRMタイマーが無いのでpollingで代替します。Rubyの`sleep_ms`が
+実機で実時間だけ待つのは、これのおかげです。
 
 gemは静的リンクされます。ビルド設定が挙げたmrbgemはすべて`libmruby.a`に
 コンパイルされ、実行時に取得されるものはありません。`picoruby-*`gemのC側はVMが
@@ -322,16 +310,10 @@ gemboxなし。`puts`と`print`のあるコアRubyですが`stdlib`が無く、`
 `String#ord`・`String#%`は使えません。`virtual-peripheral`、`iphone-torch`、
 `stackchan`、`tilt-synth`、watchOS exampleが使います。
 
-縮小版の設定が`picoruby-machine`を明示しているのは、このgemがVMのリンク先である
-Estallocのヒープglue（`mrb_basic_alloc_func`、`mrb_open_with_custom_alloc`）を
-持つためです。gembox付きの設定は`gembox "core"`経由で入手します。
-
-縮小版で足りないexampleは、共有のベースではなく**自分専用の**ビルド設定にgemを
-足します。共有ベースにgemを足すと、そのgemを使わない他のexampleのアプリリンクが
-未解決シンボルで壊れるためです。`virtual-peripheral`と`stackchan`が
-picoruby-bleのRuby層に必要な`mruby-pack`・`mruby-string-ext`・`mruby-sprintf`
-に対して、まさにこれをやっています。exampleに新しいRubyを載せるときは、実機で
-頼る前に`rake smoke`のホストビルドで試してください。
+ビルド設定はexampleごとに独立しているので、縮小版で足りないexampleは自分の設定に
+gemを足します。`virtual-peripheral`と`stackchan`で`Array#pack`が使えて
+`iphone-torch`では使えないのはそのためです。exampleに新しいRubyを載せるときは、
+実機で頼る前に`rake smoke`のホストビルドで試してください。
 
 ## vendorの取得元
 

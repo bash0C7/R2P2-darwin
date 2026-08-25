@@ -75,9 +75,8 @@ contextでraiseせずスケジューラ上でparkします。
 `BLE::AdvertisingData`がAD-TLVの`adv_data`を組み立てます。rp2040が使うのと同じ
 ビルダが、事前に焼き込まれるのではなく起動時に端末上で走ります。
 
-これらは`Array#pack`や`String#setbyte`などを必要とするため、このexampleの
-ビルド設定は縮小版のgem集合に`mruby-pack`・`mruby-string-ext`・`mruby-sprintf`を
-足しています。ATTハンドルはハードコードせず`db.handle_table`から読み戻します。
+ATTハンドルはハードコードせず`db.handle_table`から読み戻すので、キャラクタリス
+ティックを1つ足しても番号を振り直す必要はありません。
 
 ```ruby
 hr = db.handle_table[HR_SERVICE][HR_MEASUREMENT]
@@ -120,13 +119,10 @@ VMブリッジとビルド設定はリポジトリのルート（`../../../bridg
 `ports/darwin/ext`にある`PicoBLEDarwin` Swiftパッケージ（C portが呼び、アプリが
 リンクする）です。
 
-本リポジトリの既定の`PICORUBY_REPO` / `PICORUBY_REF`は既にそれらを持つツリーを
-指しているので、素のチェックアウトで`rake setup`すれば足ります。追加でcloneする
-ものはありません。[vendorの取得元](../../../README_jp.md#vendorの取得元)を参照。
-upstreamの`picoruby/picoruby` masterにdarwinのBLE portはありません。
-
-`PICORUBY_BLE_GEMDIR`はpicoruby-bleのgemディレクトリだけを差し替えます。vendor
-ツリー全体を向け替えずに、そのgemの別チェックアウトで作業したいとき用です。
+本リポジトリの既定値は既にそれらを持つツリーを指しているので、素のチェックアウトで
+`rake setup`すれば足ります。追加でcloneするものはありません。upstreamの
+`picoruby/picoruby` masterにdarwinのBLE portはありません。
+[vendorの取得元](../../../README_jp.md#vendorの取得元)を参照。
 
 ## ビルドと実行
 

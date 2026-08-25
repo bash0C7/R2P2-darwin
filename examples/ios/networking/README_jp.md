@@ -6,7 +6,7 @@ HTTPS GETの往復すべてをPicoRubyがやるexampleです。`app.rb`はpicoru
 `picoruby-net-http` gemの`Net::HTTP`を`picoruby-socket`の上で呼びます。iOSでは
 `picoruby-socket`のdarwin portが生のBSDソケットを開き、TLSハンドシェイクを
 mbedTLSで走らせます。エントロピーは`picoruby-mbedtls`と`picoruby-rng`のdarwin
-port（`SecRandomCopyBytes`。`-framework Security`でリンク）が供給します。
+portが`SecRandomCopyBytes`から取ってきます。
 
 OpenSSLは一切関与せず、AppleのURL読み込みAPI（`URLSession`も`CFNetwork`も）も
 使いません。App Transport SecurityはそれらのAPIだけを対象とする仕組みなので、
@@ -50,15 +50,10 @@ mbedTLSが検証に使えるPEMのCAバンドルを積んでいないため、�
 
 ## gem集合
 
-このexampleと[repl](../repl/README_jp.md)の2つが、他exampleの縮小版ではなく
-フルREPLのgembox集合（`mruby-posix` + `core` + `stdlib` + `shell`）を使います。
-好みの問題ではありません。`picoruby-socket`・`picoruby-mbedtls`・`picoruby-rng`は
-いずれもPOSIX形のビルドを前提に分岐しており、縮小版の設定はそれを満たしません。
-
-`build_config/r2p2-picoruby-ios-net-{sim,device}.rb`はそのgembox集合に
-`picoruby-net-http`を足したものです。`picoruby-net-http`自身が
-`picoruby-socket`と`picoruby-uri`を引き込みます。この設定はexample専用なので、
-`repl`側の設定はnetworkingと無縁のまま、socketとTLSの表面なしでリンクし続けます。
+`build_config/r2p2-picoruby-ios-net-{sim,device}.rb`は[repl](../repl/README_jp.md)
+と同じフルREPLのgembox集合（`mruby-posix` + `core` + `stdlib` + `shell`）に
+`picoruby-net-http`を足したものです。したがってここの`app.rb`はRubyの表面を丸ごと
+使えます。BLE系やセンサ系のexampleが動く縮小版とは違います。
 
 ## 依存
 

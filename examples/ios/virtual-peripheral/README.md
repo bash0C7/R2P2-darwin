@@ -80,10 +80,8 @@ hands back as captured stdout for the on-screen log.
 `BLE::AdvertisingData` builds the AD-TLV `adv_data` — the same builders rp2040
 uses, running on the phone at boot rather than baked in ahead of time.
 
-They need `Array#pack`, `String#setbyte`, and friends, so this example's build
-configs carry `mruby-pack`, `mruby-string-ext`, and `mruby-sprintf` on top of
-the reduced gem set. ATT handles are read back from `db.handle_table` instead of
-being hardcoded:
+ATT handles are read back from `db.handle_table` instead of being hardcoded, so
+adding a characteristic does not mean renumbering anything:
 
 ```ruby
 hr = db.handle_table[HR_SERVICE][HR_MEASUREMENT]
@@ -128,15 +126,10 @@ This example needs picoruby-ble's CoreBluetooth darwin port: `ports/darwin/`
 (the BLE peripheral and central port) plus the `PicoBLEDarwin` Swift package
 under `ports/darwin/ext`, which the C port calls and the app links.
 
-The repository's default `PICORUBY_REPO` / `PICORUBY_REF` already point at a
-tree carrying them, so `rake setup` on a plain checkout is enough — there is
-nothing extra to clone. See
-[Vendor source](../../../README.md#vendor-source). Upstream
-`picoruby/picoruby` master carries no darwin BLE port.
-
-`PICORUBY_BLE_GEMDIR` overrides just the picoruby-ble gem directory, for working
-against a separate checkout of that gem without re-pointing the whole vendor
-tree.
+The repository's defaults already point at a tree carrying them, so `rake setup`
+on a plain checkout is enough — there is nothing extra to clone. Upstream
+`picoruby/picoruby` master carries no darwin BLE port; see
+[Vendor source](../../../README.md#vendor-source).
 
 ## Build and run
 
