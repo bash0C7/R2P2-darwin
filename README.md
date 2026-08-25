@@ -4,19 +4,22 @@
 
 日本語版: [README_jp.md](README_jp.md)
 
-A self-contained harness for building and running PicoRuby on Apple platforms:
-a macOS host, iOS (Simulator and signed physical device), and watchOS. It
-cross-builds picoruby into a static library, links it into SwiftUI apps
-through a thin C bridge, and ships examples that put the application's
-behavior in Ruby. picoruby bakes the prism compiler into the VM, so the apps
-compile and run Ruby source at runtime, on the device.
+Build and run [PicoRuby](https://github.com/picoruby/picoruby) on Apple
+platforms: the macOS host, iOS (Simulator and signed physical device), and
+watchOS. This is the Apple member of the [R2P2 harness
+family](#the-r2p2-family), alongside R2P2-ESP32 on the ESP-IDF side.
 
-## Getting Started
+The repository cross-builds picoruby into a static library, links it
+into SwiftUI apps through a thin C bridge, and ships example apps whose entire
+behaviour lives in a Ruby file. PicoRuby bakes the prism compiler into the VM,
+so those apps compile and run Ruby source at runtime, on the device.
 
-The shortest path to PicoRuby running on an Apple platform — the repl example
-on the iOS Simulator, no signing required:
+## Quick start
 
-1. Install the full Xcode.app (App Store; the Command Line Tools alone are not
+The shortest path to PicoRuby running on an Apple platform: the `repl` example
+on the iOS Simulator. No Apple Developer account and no signing needed.
+
+1. Install the full Xcode.app (App Store — the Command Line Tools alone are not
    enough) and point the toolchain at it:
 
    ```sh
@@ -24,7 +27,11 @@ on the iOS Simulator, no signing required:
    sudo xcodebuild -license accept
    ```
 
-2. `brew install xcodegen`
+2. Install the project generator:
+
+   ```sh
+   brew install xcodegen
+   ```
 
 3. Clone and verify the prerequisites:
 
@@ -34,188 +41,356 @@ on the iOS Simulator, no signing required:
    rake check
    ```
 
-4. `rake ios`
+4. Build and launch:
 
-`rake ios` fetches picoruby into `vendor/picoruby` (first run only; ~1.2 GB
-with submodules, and build output brings the repo to ~3 GB), cross-builds
-`libmruby.a`, generates the Xcode project, builds the app, and launches it in
-the Simulator. Type `puts "hello #{1 + 2}"` into the app and tap Run: it
-prints `hello 3`, compiled and executed by PicoRuby inside the app.
+   ```sh
+   rake ios
+   ```
 
-Ruby: any ambient install (rbenv / asdf / system) >= 2.7 works;
-`.ruby-version` pins 4.0.5 for version managers.
+`rake ios` fetches picoruby into `vendor/picoruby`, cross-builds `libmruby.a`
+for the Simulator SDK, generates the Xcode project, builds the app, and
+launches it. Type `puts "hello #{1 + 2}"` into the app and tap Run: it prints
+`hello 3`, compiled and executed by PicoRuby inside the app.
 
-## What this is
+The first run clones picoruby with submodules (~1.2 GB; build output brings the
+working tree to roughly 3 GB). Any ambient Ruby >= 2.7 (rbenv / asdf / system)
+drives the Rakefile; `.ruby-version` pins 4.0.5 for version managers.
 
-`R2P2-darwin` connects picoruby to Apple's build systems (Xcode / xcodebuild /
-Simulator / signing on iOS and watchOS; clang + Swift on the macOS host). It
-is the analogue of [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) on the
-Apple axis: a self-contained harness, because iOS and watchOS are their own
-substantial external build systems the way ESP-IDF is.
+## What this repository is
 
-picoruby is a common PicoRuby core whose mrbgems carry per-architecture
-implementations under `mrbgems/<gem>/ports/<arch>/` (rp2040 / posix / esp32 /
-darwin ...) behind identical interfaces. R2P2-darwin holds the build configs
-that select the Apple-appropriate ports, plus the C bridge and the example
-apps. Apple-specific glue lives here; the picoruby tree stays pristine.
+### The R2P2 family
 
-A single `vendor/picoruby` checkout feeds every platform. `rake setup` fetches
-it (each lib task depends on setup, so it also happens on demand);
-`rake refresh` re-fetches `PICORUBY_REF` into the existing checkout. Build
-output goes to `./build` (`MRUBY_BUILD_DIR`), so the fetched source is never
-mutated. Environment variables:
+R2P2 — Ruby Rapid Portable Platform — is PicoRuby's shell: an interactive Ruby
+environment that runs on the target itself. It lives in picoruby as the
+`picoruby-r2p2` picogem. Carrying it, and the VM underneath it, onto one
+platform family's build system is the job of a separate *harness* repository:
+
+| Harness | Platform family | How it obtains picoruby |
+|---|---|---|
+| `rake r2p2:*` inside [picoruby/picoruby](https://github.com/picoruby/picoruby) | Raspberry Pi Pico (RP2040 / RP2350) | it *is* the picoruby tree |
+| [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) | ESP32 family, through ESP-IDF | git submodule at `components/picoruby-esp32/picoruby`, pinned to an upstream commit |
+| **R2P2-darwin** (this repository) | macOS host, iOS, watchOS, through Xcode | `rake setup` clones `PICORUBY_REF` into a gitignored `vendor/picoruby` |
+
+The dependency mechanism differs on purpose. R2P2-ESP32 can pin upstream as a
+submodule because every port it needs (`ports/esp32/`) is already upstream.
+R2P2-darwin cannot: the darwin ports are developed alongside this harness, so
+the checkout is a *fetch of a configurable ref* rather than a pinned submodule,
+and it is gitignored rather than committed. That makes `PICORUBY_REPO` and
+`PICORUBY_REF` first-class knobs here in a way they are not on the ESP32 side,
+and it is why the default ref is a fork — see [Vendor source](#vendor-source).
+
+What comes out differs too. A Pico or ESP32 build produces one firmware image,
+and R2P2 is essentially the whole of it. Apple platforms have no such slot: an
+app is a signed bundle assembled by Xcode. So this repository's primary product
+is `libmruby.a` — the VM as a static library to link into a SwiftUI app through
+a C bridge — and it ships example apps rather than a single firmware. The R2P2
+shell itself does appear on the macOS host, where picoruby runs natively:
+`rake macos:build` builds the `picoruby-bin-r2p2` executable and `rake macos:run`
+drops you into that shell.
+
+### Ports, and where the Apple glue lives
+
+Each picoruby mrbgem keeps its architecture-specific code under
+`mrbgems/<gem>/ports/<arch>/` — `rp2040`, `posix`, `esp32`, `darwin` — behind an
+interface (`include/*.h`) that is identical across every port. A harness selects
+ports; it does not fork the core.
+
+R2P2-darwin therefore holds the MRuby build configs that select the
+Apple-appropriate ports, the C bridge between Swift and the VM, and the example
+apps. Apple-specific glue belongs here; the fetched picoruby tree stays pristine
+and is never committed to.
+
+### Darwin is a POSIX platform
+
+iPhone, Apple Watch, and Mac all run Darwin (XNU plus BSD libc), so every build
+config in this repository defines **both** `PICORB_PLATFORM_POSIX` and
+`PICORB_PLATFORM_DARWIN`, and sets `conf.ports :darwin, :posix`.
+
+- `PICORB_PLATFORM_POSIX` tells picoruby it has libc, threads, file
+  descriptors, and signals. Dropping it to shrink the VM would force the MCU
+  port contract (hardware clock, GPIO sleep, littlefs, watchdog) onto a system
+  that has none of those problems.
+- `PICORB_PLATFORM_DARWIN` marks the Apple-specific differences: CoreBluetooth
+  instead of BTstack, `SecRandomCopyBytes` instead of `/dev/urandom` (which iOS
+  sandboxes), no controlling TTY.
+- `conf.ports :darwin, :posix` picks a gem's `ports/darwin/` when it has one and
+  falls back to `ports/posix/` otherwise, resolved per gem at build time.
+
+Two consequences worth knowing up front. Because the darwin port wins outright
+when it exists, each `ports/darwin/` must define every symbol its posix sibling
+would have — it is self-contained, not a patch on top. And because
+`PICORB_PLATFORM_POSIX` is set, `picoruby-mruby` adds `mruby-io` (the source of
+`puts` and `print`), `mruby-task`, and the build-wide define
+`MRB_BASELINE_PROFILE=1`, which affects `sizeof(mrb_state)` — the C bridge must
+be compiled with the same define set, which is why `project.yml` and the build
+config are kept in step.
+
+### One vendored checkout, one build directory
+
+A single `vendor/picoruby` checkout feeds every platform, and all build output
+goes to `./build` (`MRUBY_BUILD_DIR`), so the fetched source is never mutated.
+
+```sh
+rake setup     # clone PICORUBY_REF into vendor/picoruby (each :lib task depends on this)
+rake refresh   # re-fetch PICORUBY_REF into the existing checkout
+rake clean     # remove build/ and every example's staged Vendor/
+rake clobber   # clean + remove vendor/picoruby
+```
 
 | Variable | Default | Controls |
 |---|---|---|
-| `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picoruby source repo |
-| `PICORUBY_REF` | `port-darwin` | ref to fetch — master + darwin ports (see [Vendor fork](#vendor-fork)) |
-| `IOS_MIN` | `17.0` | iOS deployment minimum (iOS build configs) |
-| `WATCHOS_MIN` | `11.0` | watchOS deployment minimum (watchOS build configs) |
+| `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picoruby source repository |
+| `PICORUBY_REF` | `port-darwin` | ref to fetch — see [Vendor source](#vendor-source) |
+| `IOS_MIN` | `17.0` | iOS deployment target minimum |
+| `WATCHOS_MIN` | `11.0` | watchOS deployment target minimum |
 | `PICORUBY_BLE_GEMDIR` | vendor's `picoruby-ble` | alternate picoruby-ble checkout for the BLE examples |
+| `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | build config for the `macos:` host tasks |
 
 ## Examples
 
-Each iOS / watchOS example is a SwiftUI app whose behavior lives in `app.rb`;
-each has its own README with the details. `rake <ns>:all` runs the Simulator
-pipeline (lib → gen → build → run) and `rake <ns>:device:all` builds, signs,
-installs, and launches on a connected device — see
-[On-device builds](#on-device-builds).
+Every iOS and watchOS example is a SwiftUI app whose behaviour lives in
+`app.rb`, shipped as a plain-text resource and compiled at launch by the prism
+compiler inside the app. Each has its own README.
 
-| Example | rake namespace | What it shows |
+| Example | rake namespace | What it demonstrates |
 |---|---|---|
-| [ios/repl](examples/ios/repl/README.md) | `ios:repl` (aliased as `ios`) | evaluate Ruby typed into the app, full-REPL VM |
-| [ios/networking](examples/ios/networking/README.md) | `ios:net` | HTTP/TLS from Ruby — Net::HTTP over picoruby-socket's darwin port (mbedTLS), no URLSession |
-| [ios/virtual-peripheral](examples/ios/virtual-peripheral/README.md) | `ios:vperiph` | a BLE peripheral written in Ruby (CoreBluetooth via the picoruby-ble darwin port) |
-| [ios/iphone-torch](examples/ios/iphone-torch/README.md) | `ios:torch` | the iPhone "L-chika": flashlight driven from `app.rb` |
+| [ios/repl](examples/ios/repl/README.md) | `ios:repl` (also plain `ios`) | evaluate Ruby typed into the app at runtime |
+| [ios/networking](examples/ios/networking/README.md) | `ios:net` | `Net::HTTP` over picoruby-socket's darwin port — TLS through mbedTLS, no `URLSession`, no OpenSSL |
+| [ios/virtual-peripheral](examples/ios/virtual-peripheral/README.md) | `ios:vperiph` | a BLE GATT peripheral written in Ruby, over CoreBluetooth |
+| [ios/iphone-torch](examples/ios/iphone-torch/README.md) | `ios:torch` | the iPhone "L チカ": the flashlight blinked from a Ruby loop |
 | [ios/stackchan](examples/ios/stackchan/README.md) | `ios:stackchan` | a BLE central driving a [Stack-chan](https://github.com/meganetaaan/stack-chan) robot over NUS |
-| [ios/tilt-synth](examples/ios/tilt-synth/README.md) | `ios:tiltsynth` | Device Motion FM synth — the sound mapping lives in `app.rb` |
-| [watchos/led-toggle](examples/watchos/led-toggle/README.md) | `watchos:led` | an LED blink in Ruby on the Apple Watch (arm64_32) |
+| [ios/tilt-synth](examples/ios/tilt-synth/README.md) | `ios:tiltsynth` | Device Motion to FM synthesis, with the musical mapping in Ruby |
+| [watchos/led-toggle](examples/watchos/led-toggle/README.md) | `watchos:led` | a Ruby state machine on the Apple Watch (`arm64_32`) |
+| [macos/ls](examples/macos/ls/README.md) | — | a demo script for `rake macos:single` |
 
-For example: `rake ios:torch:all` (Simulator) or `rake ios:torch:device:all`
-(connected iPhone). `rake ios:vperiph:write` builds a macOS BLE central helper
-that drives the peripheral from the Mac (`WRITE_HEX` etc. pass through the
-environment).
-
-### Verifying behavior: observe / determinism
-
-`rake ios:<name>:observe` is the official behavior-verification target: it
-launches the built app on a frozen Simulator `OBSERVE_N` times (env
-`SIM_UDID` / `OBSERVE_N`, default 5) and classifies each run OK (the
-example's `golden:` string from `IOS_EXAMPLES` appears in the console-pty
-output — `hello 3` for repl, `[Torch] VM opened` for torch, and so on) or
-CRASH (a new crash report or crash signature). When the frozen Simulator
-UDID is not on this host, the first available iPhone Simulator is used.
-If the runs disagree, it aborts as NON-DETERMINISTIC — that's how an
-uncontrolled input gets caught. This is what turns "same build options ×
-same built code → same behavior" into an enforced property rather than an
-assumption. Raw logs land under `build/observe/`.
-
-`rake determinism:ios:repl` is a companion build-content check: it
-clean-builds `ios-repl`'s `libmruby.a` twice and compares object-content
-hashes (ignoring `ar` header timestamp noise) to verify the build itself is
-reproducible.
-
-Operational notes:
-- observe pins to one frozen Simulator (`SIM_UDID`, defaulted in the
-  Rakefile) — don't recreate/erase/factory-reset it; its container state is
-  a controlled variable across runs.
-- After changing a build_config's defines, `rm -rf build/ios-repl-sim`
-  before rebuilding — picoruby's per-object compile rule keys only on the
-  `.c` mtime, not on build_config changes, so a stale `.o` is reused and the
-  change silently fails to take effect.
-
-`observe` is defined for every iOS example (`golden:` per example in the
-Rakefile's `IOS_EXAMPLES`); `determinism` is wired for `ios:repl` only today,
-and the same pattern extends, later, to watchOS/macOS.
-
-### macOS host
-
-macOS runs picoruby natively — host build modes, not example apps. Output
-lands in `./build/host/bin`. `rake macos:check` verifies the host
-prerequisites (the Command Line Tools are enough; Homebrew `openssl@3` is
-needed only for host builds pulling the networking gembox).
+Each namespace exposes the same four steps plus an `all` that chains them, and
+a `device:` sub-namespace that does the same against connected hardware:
 
 ```sh
-rake macos:build                                # ./build/host/bin/{r2p2,picoruby}
-rake macos:run                                  # r2p2 shell
-rake macos:run APP=path/to.rb                   # run a Ruby file
-rake macos:single APP=examples/macos/ls/ls.rb   # one self-contained binary embedding the script
+rake ios:torch:lib            # cross-build libmruby.a, stage it under the example's Vendor/
+rake ios:torch:gen            # generate the .xcodeproj from project.yml
+rake ios:torch:build          # build for the Simulator
+rake ios:torch:run            # boot a Simulator, install, launch
+rake ios:torch:all            # all four, in order
+
+rake ios:torch:device:all     # the same pipeline against a connected, signed iPhone
+rake ios:torch:device:check   # link for a generic device without signing (no hardware needed)
 ```
 
-`MRUBY_CONFIG` selects the build config (default: the Darwin host base
-`build_config/r2p2-picoruby-darwin.rb`; `r2p2-picoruby-darwin-ble.rb` opts
-into picoruby-ble / CoreBluetooth).
+`rake -T` lists every task with its description.
 
-A binary built with `r2p2-picoruby-darwin-ble.rb` cannot be run by directly
-executing `./build/host/bin/picoruby` at runtime: macOS's TCC framework hard-
-aborts (`SIGABRT`) any CoreBluetooth call from a process not launched through
-LaunchServices out of an app bundle declaring
-`NSBluetoothAlwaysUsageDescription` — even a signed, previously-authorized
-binary. Consumers that need BLE at runtime wrap the built binary in such a
-bundle and launch it with `open -a` (see
-[stackchan-picoruby's `pc/stackchan-pico`](https://github.com/bash0C7/stackchan-picoruby/tree/main/pc/stackchan-pico)
-for a working example).
+## Running on a device
 
-## On-device builds
+Device tasks build with automatic signing. Before the first device build:
 
-Device tasks build for the connected iPhone or Apple Watch with automatic
-signing. Before the first device build:
-
-1. Find your Team ID in Xcode → Settings → Accounts (a free Apple ID works).
-2. In the example's `project.yml`, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID`
+1. Find your Team ID in Xcode → Settings → Accounts. A free Apple ID works — it
+   gives you a Personal Team.
+2. In that example's `project.yml`, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID`
    with your Team ID. If the bundle id collides inside your team, change
    `bundleIdPrefix` too.
-3. The first launch of each bundle id needs a one-time on-device trust:
-   Settings → General → VPN & Device Management → your Apple ID → Trust.
+3. On the device, trust the certificate once per bundle id: Settings → General
+   → VPN & Device Management → your Apple ID → Trust.
 
-## How it fits together
+Two limits come with a free Personal Team: at most three apps installed at a
+time (install error 3002 means you are at the limit — remove one with
+`xcrun devicectl device uninstall app --device <UDID> <bundle-id>`), and
+provisioning that expires after seven days. The device must also be unlocked
+when `device:run` launches the app.
+
+`device:check` needs no hardware at all: it links the app for a generic device
+with signing disabled, which surfaces device-SDK-only breakage — an API the
+device SDK marks unavailable, or a port symbol missing from the device
+archive — without a signing session.
+
+## macOS host
+
+On macOS, picoruby runs natively rather than as an embedded VM, so the host
+tasks produce binaries instead of apps. Output lands in `./build/host/bin`.
+
+```sh
+rake macos:check                                # Xcode CLT, brew openssl@3, Swift
+rake macos:build                                # ./build/host/bin/{r2p2,picoruby}
+rake macos:run                                  # the r2p2 shell
+rake macos:run APP=path/to.rb                   # run one Ruby file
+rake macos:single APP=examples/macos/ls/ls.rb   # a standalone binary with the script embedded
+```
+
+The Command Line Tools are enough here; Homebrew's `openssl@3` is needed only
+because the host build pulls in the networking gembox. `MRUBY_CONFIG` selects
+the build config: `r2p2-picoruby-darwin.rb` is the host base,
+`r2p2-picoruby-darwin-ble.rb` adds picoruby-ble and picoruby-picotest, and
+`r2p2-picoruby-darwin-single.rb` backs `macos:single`.
+
+A binary built with the BLE config cannot be run by executing
+`./build/host/bin/picoruby` directly. macOS TCC aborts (`SIGABRT`) any
+CoreBluetooth call from a process that LaunchServices did not start out of an
+app bundle declaring `NSBluetoothAlwaysUsageDescription` — signing and prior
+authorization make no difference. This repository produces the binary; wrapping
+it in such a bundle and launching it with `open -a` belongs to the consumer.
+[stackchan-picoruby's `pc/stackchan-pico`](https://github.com/bash0C7/stackchan-picoruby/tree/main/pc/stackchan-pico)
+is a worked example.
+
+## Verifying the build
+
+Four checks, from cheapest to most involved.
+
+**`rake smoke`** builds picoruby for the host with
+`build_config/r2p2-picoruby-host.rb` — the same core gem set and the same port
+chain every iOS config starts from — links `bridge/smoke_test.c` against it, and
+runs it. This is the fast gate on the bridge and on `ports/darwin/machine.c`,
+and it is what CI runs on every push.
+
+**`rake ios:<name>:device:check`** links the device app unsigned, catching
+anything the device SDK forbids that the Simulator and host builds allow.
+
+**`rake ios:<name>:observe`** is the behaviour gate. It launches the built app
+on a pinned Simulator `OBSERVE_N` times (default 5) and classifies each run:
+
+- *OK* — the example's expected line appears in the captured output and no new
+  crash report landed. The expected line is declared per example in the
+  Rakefile's `IOS_EXAMPLES` table (`hello 3` for repl, `[Torch] VM opened` for
+  torch, and so on).
+- *CRASH* — a new `.ips` report for the app's process, or a known crash
+  signature in the output.
+- *RUBY_ERROR* — a Ruby backtrace at boot, which leaves the VM open and would
+  otherwise let the expected line still appear.
+
+If the runs disagree, the task aborts as NON-DETERMINISTIC: something outside
+the build is influencing the result. Raw logs land under `build/observe/`, and
+the first OK run is kept as a golden file for later runs to diff against.
+
+The Simulator is pinned by UDID (`SIM_UDID`, defaulted in the Rakefile) so its
+container state stays a controlled variable across runs — do not erase or
+recreate it. When that UDID is absent, the first available iPhone Simulator is
+used and a warning is printed.
+
+**`rake determinism:ios:repl`** attacks the same question from the build side:
+it clean-builds `ios-repl`'s `libmruby.a` twice and compares hashes of the
+archive's extracted members, ignoring the `ar` header timestamps that change on
+every build regardless of code. Equal hashes mean the same inputs really did
+produce the same objects.
+
+One operational note that follows from picoruby's build rules: after changing a
+build config's defines, `rm -rf build/<target>` before rebuilding. The
+per-object compile rule keys on the `.c` file's mtime alone, so an existing
+`.o` is reused and the define change silently fails to take effect.
+
+## How the pieces fit
 
 ```
-examples/ios/<name>/Sources (SwiftUI)
-        │  Swift ⇄ C bridging header
+examples/ios/<name>/Sources/*.swift          SwiftUI
+        │  bridging header
         ▼
-bridge/picoruby_bridge.c   ──▶  libmruby.a (iOS arm64)
-  repl_eval(src)                  prism compiler + mruby VM
-  vm_open / vm_call / vm_close    cross-built from vendor/picoruby by
-                                  build_config/r2p2-picoruby-ios-<name>-{sim,device}.rb
+bridge/picoruby_bridge.c                     C bridge
+        │
+        ▼
+Vendor/lib/libmruby.a                        prism compiler + mruby VM,
+                                             cross-built from vendor/picoruby by
+                                             build_config/r2p2-picoruby-<target>.rb
 ```
 
-- `bridge/picoruby_bridge.c` — `repl_eval(src)` evaluates Ruby in a fresh VM
-  and captures stdout/stderr; `vm_open`/`vm_call`/`vm_close` own a persistent
-  VM and invoke a method on the Ruby global `$app` (every example except
-  `repl`). One owner thread touches the VM.
-- `bridge/task_hal_ios.c` — a polling task-scheduler HAL for iOS (no SIGALRM).
-- Gems are linked statically: every mrbgem in the build config is compiled
-  into `libmruby.a`; nothing is fetched at run time. A `picoruby-*` gem's C
-  part is registered when the VM opens, but its Ruby layer is a picogem that
-  loads on `require` (picoruby-require comes with picoruby-machine), so
-  `app.rb` starts with `require "ble"` before subclassing `BLE`. To make a
-  class available to an example, add its gem to that example's build config.
+The bridge exposes two shapes, and an example uses one or the other:
 
-Two gem-set shapes coexist, per example. Both build the VM as a POSIX-family
-Darwin platform — `PICORB_PLATFORM_POSIX` + `PICORB_PLATFORM_DARWIN` with
-`conf.ports :darwin, :posix`, so a gem's `ports/darwin/` is compiled when it
-has one and `ports/posix/` otherwise. `repl` and `networking` use the
-full-REPL gembox (`mruby-posix` + `core` + `stdlib` + `shell`) — the full Ruby
-surface at the cost of a larger link. The other examples use a reduced gem
-set: `conf.picoruby` (its `picoruby-mruby` pulls in `mruby-io` and
-`mruby-task` on POSIX) + `mruby-compiler` + `picoruby-machine` — core Ruby
-with `puts` / `print`,
-but no `stdlib` (`defined?` / `String#ord` / `String#%` are absent). An
-example that needs more (e.g. `Array#pack`, `sprintf`) adds the gem to its own
-example-scoped build config — see `examples/ios/stackchan`. Probe new bundled
-Ruby against `rake smoke`'s host build before relying on it on-device.
+- `repl_eval(src)` opens a fresh VM, compiles and runs `src`, and returns the
+  captured stdout and stderr — compile diagnostics and uncaught-exception
+  backtraces included — as a malloc'd string the caller frees. The `repl`
+  example uses this: one clean VM per evaluation.
+- `vm_open` / `vm_call` / `vm_close` own a persistent VM. `vm_open` compiles and
+  runs the bundled `app.rb`, which assigns the Ruby global `$app`; `vm_call`
+  invokes a method on it and returns what that method printed. Every other
+  example uses this. Each `vm_call` is dispatched inside an mruby task, so Ruby
+  code may block on the VM's own event queue. A single owner thread touches the
+  VM for its whole lifetime.
 
-## Vendor fork
+`bridge/task_hal_ios.c` supplies the mruby task-scheduler HAL for iOS and
+watchOS, where the SIGALRM-driven posix HAL is unavailable — it polls instead.
+It defines all six HAL entry points (`mrb_hal_task_init` / `_final` /
+`_idle_cpu` / `_sleep_us`, `mrb_task_enable_irq` / `_disable_irq`), which is
+what keeps the posix `task_hal.o` inside the archive from ever being pulled in.
 
-The default vendor source (`bash0C7/picoruby`, branch `port-darwin`) is
-upstream master plus the darwin ports (ble / rng / mbedtls / io-console /
-machine / socket) and `hal-io-darwin` (mruby-io's HAL for watchOS, which
-forbids fork/exec). Upstream `picoruby/picoruby` master has none of them, so
-pointing `PICORUBY_REF` at upstream breaks every example that compiles a
-darwin port first (`conf.ports :darwin, :posix`): `networking` (its TLS would
-need OpenSSL), `virtual-peripheral`, `stackchan`, and the watchOS build. Any
-fork/branch carrying these works — the vendor is not pinned to one ref.
+Gems link statically: every mrbgem named by the build config is compiled into
+`libmruby.a` and nothing is fetched at runtime. A `picoruby-*` gem's C half is
+registered when the VM opens, but its Ruby half is a picogem loaded on
+`require`, which is why `app.rb` in the BLE examples starts with `require "ble"`
+before subclassing `BLE`. To make a class available to an example, add its gem
+to that example's build config.
+
+### Two gem-set shapes
+
+**Full REPL** — `mruby-posix` + `core` + `stdlib` + `shell` gemboxes. The whole
+Ruby surface, at the cost of a larger link. Used by `repl` and `networking`
+(the socket, mbedtls, and rng gems all assume a POSIX-shaped build).
+
+**Reduced** — `conf.picoruby` + `mruby-compiler` + `picoruby-machine`, no
+gembox. Core Ruby with `puts` and `print`, but no `stdlib`: `defined?`,
+`String#ord`, and `String#%` are absent. Used by `virtual-peripheral`,
+`iphone-torch`, `stackchan`, `tilt-synth`, and the watchOS example.
+
+`picoruby-machine` is listed explicitly in the reduced configs because it
+carries the Estalloc heap glue (`mrb_basic_alloc_func`,
+`mrb_open_with_custom_alloc`) that the VM links against; full-gembox configs get
+it through `gembox "core"`.
+
+An example that needs more than the reduced set adds gems to **its own**
+build config, never to a shared one — a gem added to a shared base breaks the
+app link of every example that does not use it, with unresolved symbols.
+`virtual-peripheral` and `stackchan` do exactly this for `mruby-pack`,
+`mruby-string-ext`, and `mruby-sprintf`, which picoruby-ble's Ruby layer needs.
+When bundling new Ruby into an example, probe it against `rake smoke`'s host
+build before relying on it on a device.
+
+## Vendor source
+
+The default source is the `port-darwin` branch of
+[bash0C7/picoruby](https://github.com/bash0C7/picoruby): upstream master plus
+the darwin ports (ble, rng, mbedtls, io-console, machine, socket) and
+`hal-io-darwin`, an external HAL provider that replaces `mruby-io`'s posix HAL
+for watchOS, whose SDK forbids `fork` and `exec`.
+
+Upstream `picoruby/picoruby` master carries none of those ports. Pointing
+`PICORUBY_REF` at it breaks every example that needs a darwin port first:
+`networking` (its TLS would want OpenSSL, which iOS does not ship),
+`virtual-peripheral`, `stackchan`, and the watchOS build. Any fork or branch
+carrying the ports works — `PICORUBY_REF` re-points the whole vendored tree, and
+nothing here is pinned to a single ref.
+
+## Layout
+
+```
+R2P2-darwin/
+  Rakefile               check / setup / refresh / smoke / ios:<example>:* /
+                         watchos:led:* / determinism:* / clean / clobber
+  rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
+  build_config/
+    r2p2-picoruby-ios-<example>-{sim,device}.rb    per-example iOS cross-builds
+    r2p2-picoruby-watchos-{sim,device}.rb          watchOS cross-builds
+    recompile_arm64_32.rb                          arm64_32 re-archive for the watch
+    r2p2-picoruby-darwin{,-ble,-single}.rb         macOS host builds
+    r2p2-picoruby-host.rb                          host build behind `rake smoke`
+    r2p2-picoruby-ios-{rng,mbedtls,io-console}-sim.rb
+                                                   single-gem darwin-port probes (no rake
+                                                   task; see below)
+    r2p2-stackchan-pc.rb                           host build for stackchan-picoruby's PC side
+  bridge/                picoruby_bridge.{c,h}, task_hal_ios.c, smoke_test.c
+  examples/
+    ios/<name>/          SwiftUI app + app.rb (+ example-local gems where used)
+    watchos/led-toggle/  the watchOS example
+    macos/ls/            demo script for rake macos:single
+  vendor/picoruby/       fetched by rake setup (gitignored)
+  build/                 all build output, MRUBY_BUILD_DIR (gitignored)
+```
+
+The three single-gem probe configs each cross-build the bare VM plus exactly one
+gem, to check that gem's darwin port compiles and links for the iOS SDK in
+isolation. They back no rake task; drive the vendored tree directly, the same
+way every `:lib` task does:
+
+```sh
+cd vendor/picoruby
+MRUBY_BUILD_DIR=../../build \
+MRUBY_CONFIG=$(cd ../.. && pwd)/build_config/r2p2-picoruby-ios-rng-sim.rb \
+  rake
+```
 
 ## Verified environment
 
@@ -225,26 +400,8 @@ fork/branch carrying these works — the vendor is not pinned to one ref.
 | Xcode | 26.5 (17F42) |
 | Ruby | 4.0.5 |
 
-Device builds have been exercised against a physical iPhone (arm64) and Apple
-Watch (arm64_32) with a free-Apple-ID personal team.
-
-## Layout
-
-```
-R2P2-darwin/
-  Rakefile                  check / setup / refresh / smoke / ios:<example>:* / watchos:led:* / clean / clobber
-  rakelib/macos.rake        macos:check / macos:build / macos:run / macos:single
-  build_config/             MRuby build configs: r2p2-picoruby-ios-<example>-{sim,device}.rb,
-                            r2p2-picoruby-watchos-{sim,device}.rb + recompile_arm64_32.rb,
-                            r2p2-picoruby-darwin*.rb (macOS host), r2p2-picoruby-host.rb (rake smoke)
-  bridge/                   picoruby_bridge.{c,h}, task_hal_ios.c, smoke_test.c
-  examples/
-    ios/<name>/             SwiftUI app + app.rb (+ example-local gems where used)
-    macos/ls/               demo script for rake macos:single
-    watchos/led-toggle/     the watchOS example
-  vendor/picoruby/          fetched by rake setup (gitignored)
-  build/                    build output, MRUBY_BUILD_DIR (gitignored)
-```
+Device builds have been exercised against a physical iPhone (`arm64`) and an
+Apple Watch (`arm64_32`) signed with a free Apple ID Personal Team.
 
 ## License
 
