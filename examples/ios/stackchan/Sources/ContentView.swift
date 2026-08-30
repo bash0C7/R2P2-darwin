@@ -13,58 +13,62 @@ struct ContentView: View {
     private let ledColors = ["red", "green", "blue", "yellow", "white", "off"]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Stack-chan Controller").font(.headline)
-
-                HStack {
-                    Button("Connect") { connect() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(busy)
-                    Text(statusText)
-                        .font(.subheadline)
-                        .foregroundStyle(statusColor)
-                }
-
-                group("Face") {
-                    flow(faces) { face in send("face", face) }
-                }
-
-                group("LED") {
-                    flow(ledColors) { color in send("led", color) }
-                }
-
-                group("Head") {
-                    VStack(spacing: 6) {
-                        HStack {
-                            Button("Left")   { send("head", "left:40:400") }
-                            Button("Center") { send("head", "center") }
-                            Button("Right")  { send("head", "right:40:400") }
-                        }
-                        HStack {
-                            Button("Up") { send("head", "up:30:400") }
-                        }
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    group("Face") {
+                        flow(faces) { face in send("face", face) }
                     }
-                    .buttonStyle(.bordered)
-                }
 
-                group("Torque") {
-                    HStack {
-                        Button("On")  { send("torque", "on") }
-                        Button("Off") { send("torque", "off") }
+                    group("LED") {
+                        flow(ledColors) { color in send("led", color) }
                     }
-                    .buttonStyle(.bordered)
-                }
 
-                Text("Output").font(.subheadline)
-                Text(output.isEmpty ? "—" : output)
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(8)
-                    .background(Color(.secondarySystemBackground))
+                    group("Head") {
+                        VStack(spacing: 8) {
+                            HStack {
+                                Button("Left")   { send("head", "left:40:400") }
+                                Button("Center") { send("head", "center") }
+                                Button("Right")  { send("head", "right:40:400") }
+                            }
+                            HStack {
+                                Button("Up") { send("head", "up:30:400") }
+                            }
+                        }
+                        .buttonStyle(.glass)
+                    }
+
+                    group("Torque") {
+                        HStack {
+                            Button("On")  { send("torque", "on") }
+                            Button("Off") { send("torque", "off") }
+                        }
+                        .buttonStyle(.glass)
+                    }
+
+                    group("Output") {
+                        Text(output.isEmpty ? "—" : output)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding()
+                            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 20))
+                    }
+                }
+                .padding()
             }
-            .padding()
+            .navigationTitle("Stack-chan")
+            .navigationSubtitle(statusText)
+            .toolbar {
+                ToolbarItem(placement: .bottomBar) {
+                    Button(connected ? "Connected" : "Connect") {
+                        connect()
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(statusColor)
+                    .disabled(busy)
+                }
+            }
         }
         .onAppear { boot() }
     }
@@ -72,7 +76,7 @@ struct ContentView: View {
     @ViewBuilder
     private func group<Content: View>(_ title: String,
                                       @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.subheadline).bold()
             content()
         }
@@ -80,11 +84,11 @@ struct ContentView: View {
 
     @ViewBuilder
     private func flow(_ items: [String], _ action: @escaping (String) -> Void) -> some View {
-        let columns = [GridItem(.adaptive(minimum: 88))]
+        let columns = [GridItem(.adaptive(minimum: 96))]
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
             ForEach(items, id: \.self) { item in
                 Button(item) { action(item) }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
             }
         }
     }
@@ -110,7 +114,7 @@ struct ContentView: View {
     private var statusColor: Color {
         if connected { return .green }
         if connectFailed && !busy { return .red }
-        return .secondary
+        return .accentColor
     }
 
     // Connect is long-running (the scan blocks the VM thread for up to 30 s):

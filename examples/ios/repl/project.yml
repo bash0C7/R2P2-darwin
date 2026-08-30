@@ -2,7 +2,7 @@ name: PicoRubyRunner
 options:
   bundleIdPrefix: com.bash0c7.picoruby
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "26.0"   # Liquid Glass (SwiftUI .glass / .glassProminent, glassEffect) — no availability shims
 targets:
   PicoRubyRunner:
     type: application
@@ -44,6 +44,7 @@ targets:
           - "$(SRCROOT)/Vendor/lib"
         OTHER_LDFLAGS:
           - "-lmruby"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"   # launch screen => full-screen layout (no letterbox)
         GENERATE_INFOPLIST_FILE: "YES"
         TARGETED_DEVICE_FAMILY: "1,2"
         PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.PicoRubyRunner

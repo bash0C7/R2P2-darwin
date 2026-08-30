@@ -136,7 +136,8 @@ rake clobber   # clean に加えて vendor/picoruby も削除
 |---|---|---|
 | `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picorubyのソースリポジトリ |
 | `PICORUBY_REF` | `port-darwin` | 取得するref — [vendorの取得元](#vendorの取得元)を参照 |
-| `IOS_MIN` | `17.0` | iOSのdeployment target下限 |
+| `IOS_MIN` | `17.0` | クロスビルドする`libmruby.a`のiOS version-min（exampleアプリ自体はLiquid GlassのためiOS 26をtarget） |
+| `SIM_NAME` | `iPhone 16e` | `ios:*:run`が起動するSimulatorの機種（無ければ先頭のiPhoneにフォールバック） |
 | `WATCHOS_MIN` | `11.0` | watchOSのdeployment target下限 |
 | `PICORUBY_BLE_GEMDIR` | vendorの`picoruby-ble` | BLE exampleが使うpicoruby-bleの別チェックアウト |
 | `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | `macos:`ホストタスクのビルド設定 |
@@ -252,7 +253,7 @@ runの結果が割れた場合、タスクはNON-DETERMINISTICとしてabortし�
 外側の何かが結果に影響しているということです。生ログは`build/observe/`に落ち、
 最初のOK runはgoldenファイルとして保存され、以後のrunがdiff対象にします。
 
-SimulatorはUDID（`SIM_UDID`。既定値はRakefile内）で固定し、コンテナ状態をrun
+SimulatorはUDID（`SIM_UDID`。既定値はRakefile内のiPhone 16e）で固定し、コンテナ状態をrun
 間で統制された変数に保ちます。消去や再作成はしないでください。そのUDIDが手元に
 無い場合は最初に利用可能なiPhone Simulatorが使われ、警告が出ます。
 

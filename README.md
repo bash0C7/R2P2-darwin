@@ -137,7 +137,8 @@ rake clobber   # clean + remove vendor/picoruby
 |---|---|---|
 | `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picoruby source repository |
 | `PICORUBY_REF` | `port-darwin` | ref to fetch — see [Vendor source](#vendor-source) |
-| `IOS_MIN` | `17.0` | iOS deployment target minimum |
+| `IOS_MIN` | `17.0` | iOS version-min for the cross-built `libmruby.a` (the example apps themselves target iOS 26 for Liquid Glass) |
+| `SIM_NAME` | `iPhone 16e` | Simulator model `ios:*:run` boots (falls back to the first available iPhone) |
 | `WATCHOS_MIN` | `11.0` | watchOS deployment target minimum |
 | `PICORUBY_BLE_GEMDIR` | vendor's `picoruby-ble` | alternate picoruby-ble checkout for the BLE examples |
 | `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | build config for the `macos:` host tasks |
@@ -255,7 +256,7 @@ If the runs disagree, the task aborts as NON-DETERMINISTIC: something outside
 the build is influencing the result. Raw logs land under `build/observe/`, and
 the first OK run is kept as a golden file for later runs to diff against.
 
-The Simulator is pinned by UDID (`SIM_UDID`, defaulted in the Rakefile) so its
+The Simulator is pinned by UDID (`SIM_UDID`, defaulted in the Rakefile to the iPhone 16e) so its
 container state stays a controlled variable across runs — do not erase or
 recreate it. When that UDID is absent, the first available iPhone Simulator is
 used and a warning is printed.

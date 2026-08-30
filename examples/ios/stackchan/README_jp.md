@@ -74,7 +74,7 @@ load-bearingです。「直さ」ないでください。
 
 BLEリンクの両端が実機です。
 
-- iOS 17以降のiPhone（BLEが使えるモデルなら何でも）。
+- iOS 26以降のiPhone（BLEが使えるモデルなら何でも）。
 - `stackchan-picoruby`ファームウェアを書き込んだStack-chanロボット。
   `StackChan-PicoRuby-<suffix>`としてアドバタイズし、NUSを公開します。
 

@@ -75,7 +75,7 @@ load-bearing — do not "fix" it.
 
 Both ends of the BLE link are real:
 
-- An iPhone running iOS 17 or later (any BLE-capable model).
+- An iPhone running iOS 26 or later (any BLE-capable model).
 - A Stack-chan robot flashed with the `stackchan-picoruby` firmware. It
   advertises as `StackChan-PicoRuby-<suffix>` and exposes NUS.
 

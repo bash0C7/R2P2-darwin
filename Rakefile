@@ -114,11 +114,21 @@ def built_app(derived, products_glob, app_name, build_task)
   app
 end
 
-# UDID of the first available simulator whose name matches `device_label`
-# ("iPhone" or "Apple Watch").
+# UDID of an available simulator for `device_label` ("iPhone" or "Apple
+# Watch"). iPhone prefers the model named by SIM_NAME (default "iPhone 16e",
+# the phone the examples are exercised on, so the Simulator matches the real
+# screen) and falls back to the first available iPhone with a warning.
+SIM_NAME = ENV["SIM_NAME"] || "iPhone 16e"
+
 def first_available_sim(device_label)
-  udid = `xcrun simctl list devices available`.lines
-         .grep(/#{device_label}/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
+  lines = `xcrun simctl list devices available`.lines.grep(/#{device_label}/)
+  pick  = ->(l) { l&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first }
+  if device_label == "iPhone"
+    udid = pick.(lines.find { |l| l.strip.start_with?("#{SIM_NAME} (") })
+    return udid if udid
+    warn "no #{SIM_NAME.inspect} simulator; using the first available iPhone (set SIM_NAME to pin one)"
+  end
+  udid = pick.(lines.first)
   raise "no available #{device_label} simulator" unless udid
   udid
 end
@@ -154,7 +164,7 @@ end
 
 # Simulator kept booted and never recreated/erased, so its DiagnosticReports
 # history and epoch stay stable across observe runs (env SIM_UDID overrides).
-FROZEN_SIM_UDID = "022CC935-D50B-4790-978F-E4CA1DD0F5DC"
+FROZEN_SIM_UDID = "A38F6094-C80A-4670-9798-C101B2F38821"   # the iPhone 16e simulator
 
 # Launch `app` on the frozen Simulator OBSERVE_N times (env, default 5) and
 # classify each run OK or CRASH. `xcrun simctl launch --console-pty` is the
