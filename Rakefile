@@ -370,7 +370,7 @@ IOS_EXAMPLES = [
     golden: "[VirtualPeripheral] VM opened" },
   { name: "torch",     label: "Torch",              dir: "iphone-torch",
     scheme: "Torch",             lib_phrase: "WITH picoruby-iphone-torch",
-    golden: "[Torch] VM opened" },
+    golden: "[Torch] VM starting" },
   { name: "tiltsynth", label: "TiltSynth",          dir: "tilt-synth",
     scheme: "TiltSynth",         lib_phrase: "WITH the tilt-synth gems",
     golden: "[TiltSynth] VM opened" },

@@ -19,6 +19,12 @@ mrb_torch_available_p(mrb_state *mrb, mrb_value self)
   return mrb_bool_value(TORCH_available());
 }
 
+static mrb_value
+mrb_torch_s_stop_requested_p(mrb_state *mrb, mrb_value self)
+{
+  return mrb_bool_value(TORCH_stop_requested());
+}
+
 void
 mrb_picoruby_iphone_torch_gem_init(mrb_state *mrb)
 {
@@ -26,6 +32,7 @@ mrb_picoruby_iphone_torch_gem_init(mrb_state *mrb)
   mrb_define_method_id(mrb, class_Torch, MRB_SYM(on),  mrb_torch_on,  MRB_ARGS_NONE());
   mrb_define_method_id(mrb, class_Torch, MRB_SYM(off), mrb_torch_off, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, class_Torch, MRB_SYM_Q(available), mrb_torch_available_p, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, class_Torch, MRB_SYM_Q(stop_requested), mrb_torch_s_stop_requested_p, MRB_ARGS_NONE());
 }
 
 void
