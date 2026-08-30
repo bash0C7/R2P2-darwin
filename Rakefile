@@ -59,10 +59,20 @@ end
 # Destination id of the SPECIFIC connected device (not generic/platform=...) so
 # -allowProvisioningUpdates + -allowProvisioningDeviceRegistration can register
 # it with the team and generate a profile. `platform` is "iOS" or "watchOS".
+# Names of the devices devicectl reports as "connected" right now. A paired
+# but absent device is "available (paired)", and a stale one "unavailable";
+# neither can take an install, so both helpers below prefer this set.
+def devicectl_connected_names
+  `xcrun devicectl list devices`.lines.grep(/\bconnected\b/).map { |l| l.split(/\s{2,}/).first.to_s.strip }
+end
+
 def connected_destination(proj, scheme, platform)
-  dest = `xcodebuild -project #{proj.shellescape} -scheme #{scheme} -showdestinations 2>/dev/null`.lines
-         .grep(/platform:#{platform},/).reject { |l| l =~ /Simulator|placeholder/ }
-         .first&.match(/id:(\S+)/)&.captures&.first
+  lines = `xcodebuild -project #{proj.shellescape} -scheme #{scheme} -showdestinations 2>/dev/null`.lines
+          .grep(/platform:#{platform},/).reject { |l| l =~ /Simulator|placeholder/ }
+  connected = devicectl_connected_names
+  line = lines.find { |l| connected.any? { |n| l.include?("name:#{n}") } } ||
+         lines.find { |l| l !~ /error:/ } || lines.first
+  dest = line&.match(/id:(\S+?),?\s/)&.captures&.first
   raise "no connected #{platform} device destination (xcodebuild -showdestinations)" unless dest
   dest
 end
@@ -148,8 +158,8 @@ end
 # (e.g. another of the user's devices that is paired but not present) so a
 # stale pairing never shadows the device actually connected right now.
 def devicectl_udid(pattern, label)
-  dev = `xcrun devicectl list devices`.lines
-        .grep(pattern).reject { |l| l =~ /\bunavailable\b/ }.first
+  rows = `xcrun devicectl list devices`.lines.grep(pattern).reject { |l| l =~ /\bunavailable\b/ }
+  dev = (rows.find { |l| l =~ /\bconnected\b/ } || rows.first)
         &.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
   raise "no connected #{label} (xcrun devicectl list devices)" unless dev
   dev
