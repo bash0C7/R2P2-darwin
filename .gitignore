@@ -6,7 +6,6 @@
 /examples/*/*/Vendor/
 /examples/*/*/*.xcodeproj
 # process docs (kept local; may hold in-progress / sensitive notes)
-/docs/superpowers/
 /HANDOFF.md
 # isolated worktrees (harness-managed)
 /.claude/worktrees/
