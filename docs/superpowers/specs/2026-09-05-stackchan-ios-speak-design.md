@@ -81,6 +81,8 @@ BLEの所有はこれまでどおりVM内のRealBleLink（「Rubyがロボット
   - 「Speak」ボタン。タップで: `speaking = true` → `send("subtitle", speakText)`
     → `SpeechSynth.synthesize` → 成功なら`VMExecutor.shared.call("speak_audio", hex)`
     完了で`speaking = false`／失敗なら出力欄にメッセージ表示して解除
+  - デザインは既存パーツと統一: `group("Speech")`ヘルパーで括り、ボタンは`.buttonStyle(.glass)`、
+    TextFieldは`.textFieldStyle(.roundedBorder)`等、既存グループと同じ見た目に揃える
   - 発話中はSpeakボタンをdisable（connectと同じsingle-flight。streamingは
     VMスレッドを数秒〜十数秒塞ぐため二重投入を防ぐ）。空テキストはボタンをdisable
 - vm_callのserial queueが順序を保証するので、subtitle→speak_audioの順序制御は不要
