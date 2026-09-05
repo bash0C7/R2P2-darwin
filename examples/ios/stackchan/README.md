@@ -4,9 +4,10 @@
 
 A PicoRuby BLE central that connects to a
 [Stack-chan](https://github.com/meganetaaan/stack-chan) robot running the
-`stackchan-picoruby` firmware and drives its face, LED, head servos, and servo
-torque over the Nordic UART Service (NUS). All of the BLE logic lives in
-`app.rb`; Swift hosts the VM and forwards button taps.
+`stackchan-picoruby` firmware and drives its face, LED, head servos, and
+speech (TTS audio streamed to the robot's speaker) over the Nordic UART
+Service (NUS). All of the BLE logic lives in `app.rb`; Swift hosts the VM and
+forwards button taps and text input.
 
 Where [virtual-peripheral](../virtual-peripheral/README.md) makes the phone a
 BLE *peripheral*, this example makes it a *central* — the other half of
@@ -26,9 +27,9 @@ VMExecutor.swift   (single VM thread)
       │  C bridge
       ▼
 app.rb   $app = Stackchan.new
-  Stackchan#connect              → RealBleLink#connect
-  Stackchan#face/led/head/torque → RealBleLink#write
-                                 → BLE::write_value_of_characteristic_without_response
+  Stackchan#connect                            → RealBleLink#connect
+  Stackchan#face/led/head/subtitle/speak_audio → RealBleLink#write
+                                                → BLE::write_value_of_characteristic_without_response
       │
       ▼
 picoruby-ble (darwin port) → PicoBLEDarwin Swift package → CoreBluetooth
@@ -71,6 +72,13 @@ Stack-chan's own perspective (its hands), and the firmware wires them reversed,
 so `"left"` becomes `R` on the wire. `SIDE_TO_CHAR` matches the hardware and is
 load-bearing — do not "fix" it.
 
+## Speech synthesis
+
+`Sources/SpeechSynth.swift` renders speech offline via
+`AVSpeechSynthesizer.write`, resamples it to 8 kHz mono, and mu-law-encodes
+the result to a hex string that `Stackchan#speak_audio` streams to the robot
+over NUS.
+
 ## Hardware
 
 Both ends of the BLE link are real:
@@ -92,7 +100,7 @@ written to the NUS RX characteristic.
 | Head — Center | yaw 0°, pitch 0°, 400 ms (reset) |
 | Head — Right | yaw right 40°, 400 ms |
 | Head — Up | pitch up 30°, 400 ms |
-| Torque — On / Off | enable or disable the servos |
+| Speech — Speak | `<text:…>` subtitle frame, then an `<A:N>` header followed by mu-law audio streamed at 180 B / 20 ms; played on the robot's speaker |
 
 ## Build config
 
