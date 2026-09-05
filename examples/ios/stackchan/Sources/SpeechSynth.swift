@@ -20,6 +20,7 @@ final class SpeechSynth: NSObject {
     func synthesize(text: String, completion: @escaping (String?) -> Void) {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+        utterance.pitchMultiplier = 1.25   // user preference: brighter, closer to the Mac `say` timbre
 
         guard let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                             sampleRate: targetRate,
@@ -32,11 +33,15 @@ final class SpeechSynth: NSObject {
         var converter: AVAudioConverter?
         var samples: [Float] = []
         var failed = false
+        var finished = false
 
         synthesizer.write(utterance) { buffer in
+            if finished { return }
             guard let pcm = buffer as? AVAudioPCMBuffer else { return }
             if pcm.frameLength == 0 {
-                // Zero-length buffer marks the end of the utterance.
+                // Zero-length buffer marks the end of the utterance. AVSpeechSynthesizer
+                // can deliver this marker more than once; fire completion only once.
+                finished = true
                 let hex = failed ? nil : Self.encodeMuLawHex(samples, gain: self.gain)
                 DispatchQueue.main.async { completion(hex) }
                 return
