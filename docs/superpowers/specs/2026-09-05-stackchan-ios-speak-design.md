@@ -127,7 +127,8 @@ host CRubyで走る既存のcodecテストに追加:
 ## エラー処理
 
 - 合成失敗（voice取得不可等）: Output paneに1行表示、speaking解除。リトライしない
-- 未接続時のspeak: 字幕フレームは既存pending経路へ、音声チャンクはdrop。
+- 未接続時のspeak: 字幕フレームは既存pending経路へ。`speak_audio`は何も書かずに早期return
+  （headerだけがpendingに残ると、後の接続時にデバイスが音声なしのdrain窓へ入るため）。
   Output paneの既存メッセージで状況が見える
 - vm_call中の例外はbridgeの既存安全網（backtraceがOutput paneへ）に任せる
 
