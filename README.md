@@ -160,6 +160,7 @@ compiler inside the app. Each has its own README.
 | [watchos/led-toggle](examples/watchos/led-toggle/README.md) | `watchos:led` | a Ruby state machine on the Apple Watch (`arm64_32`) |
 | [watchos/stackchan](examples/watchos/stackchan/README.md) | `watchos:stackchan` | the Stack-chan controller on the wrist: a BLE central in Ruby, watch-only |
 | [macos/ls](examples/macos/ls/README.md) | — | a demo script for `rake macos:single` |
+| [macos/ble-subscribe](examples/macos/ble-subscribe/README.md) | — | a BLE central on the Mac that subscribes to a peripheral's notifications |
 
 Each namespace exposes the same four steps plus an `all` that chains them, and
 a `device:` sub-namespace that does the same against connected hardware:
@@ -360,6 +361,7 @@ R2P2-darwin/
     ios/<name>/          SwiftUI app + app.rb (+ example-local gems where used)
     watchos/<name>/      SwiftUI app + app.rb, watch-only
     macos/ls/            demo script for rake macos:single
+    macos/ble-subscribe/ a BLE central that subscribes to a peripheral
   vendor/picoruby/       fetched by rake setup (gitignored)
   build/                 all build output, MRUBY_BUILD_DIR (gitignored)
 ```

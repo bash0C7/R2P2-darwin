@@ -159,6 +159,7 @@ iOS / watchOSのexampleはいずれもSwiftUIアプリで、振る舞いは`app.
 | [watchos/led-toggle](examples/watchos/led-toggle/README_jp.md) | `watchos:led` | Apple Watch（`arm64_32`）上で動くRubyの状態機械 |
 | [watchos/stackchan](examples/watchos/stackchan/README_jp.md) | `watchos:stackchan` | 腕の上のStack-chan操作アプリ。RubyのBLEセントラル、watch単体 |
 | [macos/ls](examples/macos/ls/README_jp.md) | — | `rake macos:single`のデモスクリプト |
+| [macos/ble-subscribe](examples/macos/ble-subscribe/README_jp.md) | — | MacをBLE centralにしてperipheralのnotificationを受け取る |
 
 どのnamespaceも同じ4ステップとそれを連結する`all`、さらに接続した実機に対して
 同じことをする`device:`サブnamespaceを持ちます。
@@ -354,6 +355,7 @@ R2P2-darwin/
     ios/<name>/          SwiftUI アプリ + app.rb（必要なら example 専用 gem）
     watchos/<name>/      SwiftUIアプリ + app.rb、watch単体
     macos/ls/            rake macos:single のデモスクリプト
+    macos/ble-subscribe/ peripheralのnotificationを受け取るBLE central
   vendor/picoruby/       rake setup が取得（gitignore 対象）
   build/                 全ビルド出力、MRUBY_BUILD_DIR（gitignore 対象）
 ```
