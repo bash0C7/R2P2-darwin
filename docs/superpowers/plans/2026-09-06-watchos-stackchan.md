@@ -1656,23 +1656,14 @@ xcodebuild -project examples/watchos/stackchan/WatchStackchan.xcodeproj -list
 
 Expected: `Schemes:` に `WatchStackchan` が出る。
 
-- [ ] **Step 9: 生成物を .gitignore から確認して Commit**
+- [ ] **Step 9: Commit**
 
-`.xcodeproj` は他のexampleがどう扱っているかに合わせる。
-
-```bash
-cd /Users/bash/dev/src/github.com/bash0C7/R2P2-darwin
-git check-ignore -v examples/watchos/stackchan/WatchStackchan.xcodeproj/project.pbxproj || echo "NOT IGNORED"
-git ls-files examples/watchos/led-toggle/WatchLEDToggle.xcodeproj | head
-```
-
-led-toggleの `.xcodeproj` がtrackされていれば、こちらもtrackする。ignoreされていればそれに従う。
+`.xcodeproj` は `.gitignore` の `/examples/*/*/*.xcodeproj` で除外されている生成物なので、commitしない（`rake watchos:stackchan:gen` が作り直す）。
 
 ```bash
 cd /Users/bash/dev/src/github.com/bash0C7/R2P2-darwin
 git add examples/watchos/stackchan/Sources examples/watchos/stackchan/project.yml Rakefile
-# led-toggle の .xcodeproj が tracked なら次も足す
-git add examples/watchos/stackchan/WatchStackchan.xcodeproj 2>/dev/null || true
+git status --short
 git commit -F - <<'EOF'
 feat(watch-stackchan): SwiftUI host, VM-owning thread, and the Xcode project
 
@@ -1745,7 +1736,13 @@ echo "=== lib にあって app.yml に無い ==="
 comm -23 /tmp/lib_defines.txt /tmp/app_defines.txt
 ```
 
-`rake -v` は既にビルド済みなら何もcompileせず `-D` を出さないことがある。その場合は先に `rm -rf build/watchos-stackchan-sim` してから流す。
+`rake -v` は既にビルド済みなら何もcompileせず `-D` を出さないことがある。その場合は**ビルドディレクトリを消さず**、C source を1つだけ触って1ファイル分のrecompileを誘発する。
+
+```bash
+touch $(find /Users/bash/dev/src/github.com/bash0C7/R2P2-darwin/vendor/picoruby/mrbgems/picoruby-machine -name '*.c' | head -1)
+```
+
+そのうえで上の `rake -v` を流し直す。`rm -rf` は数分のフルリビルドを招くだけで、defineの取得には要らない。
 
 Expected: `PICORB_ALLOC_ESTALLOC` / `PICORB_ALLOC_ALIGN=8` / `MRB_NO_BOXING` / `MRB_INT64` / `MRB_UTF8_STRING` / `PICORB_PLATFORM_POSIX` / `PICORB_PLATFORM_DARWIN` / `MRB_TICK_UNIT=4` / `MRB_TIMESLICE_TICK_COUNT=3` / `MRB_USE_TASK_SCHEDULER` / `MRB_BASELINE_PROFILE=1` のうち、`sizeof(mrb_state)` に効くものが差分に出ないこと。
 
@@ -2109,14 +2106,24 @@ INCLUDES = [
 
 引数のデフォルトが効いているかを、実際に走らせずに確認する。
 
+**引数なしで実際に走らせてはならない。** `build/watchos-device` が既に存在する環境では、数百objectのフルrecompileが走り `build/watchos-device/lib/libmruby.a` を書き換えてしまう。デフォルト値の確認は構文検査と、引数解決の切り出し確認だけで行う。
+
 ```bash
 cd /Users/bash/dev/src/github.com/bash0C7/R2P2-darwin
 ruby -c build_config/recompile_arm64_32.rb
-ruby build_config/recompile_arm64_32.rb 2>&1 | head -3
+ruby -e '
+  src = File.read("build_config/recompile_arm64_32.rb")
+  raise "BUILD_NAME default missing"      unless src.include?(%q{ARGV[0] || "watchos-device"})
+  raise "CONFIG_BASENAME default missing" unless src.include?(%q{ARGV[1] || "r2p2-picoruby-watchos-device.rb"})
+  raise "CONFIG_RB not parameterised"     unless src.include?("File.join(__dir__, CONFIG_BASENAME)")
+  raise "INCLUDES not parameterised"      unless src.include?(%q{File.join("build", BUILD_NAME, "include")})
+  puts "defaults and parameterisation OK"
+'
 ```
 
-Expected: `Syntax OK` が出る。2つ目のコマンドは `build/watchos-device` が無ければ
-`build dir not found: .../build/watchos-device (run the device lib task first)` で止まる（これが期待動作）。存在すれば `Recompiling watchos-device against r2p2-picoruby-watchos-device.rb` から始まる。
+Expected: `Syntax OK` と `defaults and parameterisation OK`。
+
+実際の動作確認は Step 6（stackchan、引数あり）と Step 9（led-toggle、既存の呼び出し元）で行う。
 
 - [ ] **Step 4: Rakefile の led device:lib を明示引数に更新**
 
