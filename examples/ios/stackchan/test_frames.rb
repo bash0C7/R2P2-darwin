@@ -57,6 +57,8 @@ expect("torque off", last_frame, "<torque:off>\n")
 expect("encode_text plain", FrameCodec.encode_text("こんにちは"), "<text:こんにちは>\n")
 # Frame delimiters are widened; CR/LF become a single space.
 expect("encode_text sanitize", FrameCodec.encode_text("a,b<c>d\ne"), "<text:a、b＜c＞d e>\n")
+# A CR/LF run (not just a lone CR or LF) collapses to a single space.
+expect("encode_text CRLF collapse", FrameCodec.encode_text("a\r\nb"), "<text:a b>\n")
 # 19-char cap (multibyte-safe), mirroring the device's SUBTITLE_MAX_CHARS.
 expect("encode_text truncate", FrameCodec.encode_text("あ" * 25),
        "<text:" + "あ" * 19 + ">\n")
@@ -79,6 +81,46 @@ sent_before = $app.ble.sent.length
 $app.speak_audio("00112233")
 expect("speak_audio not connected writes nothing",
        $app.ble.sent.length, sent_before)
+
+# Connected happy path: header byte count matches N, header precedes chunks,
+# chunk count/order is fixed. A recording stub whose connected? is always
+# true (BleLink's is hardwired false, so we can't drive this through $app).
+class ConnectedBleStub
+  attr_reader :sent
+
+  def initialize
+    @sent = []
+  end
+
+  def connected?
+    true
+  end
+
+  def write(frame)
+    @sent << frame
+    :ok
+  end
+
+  def write_chunk(data)
+    @sent << data
+    :ok
+  end
+end
+
+# app.rb's msleep is a top-level method; redefining it here (same top-level
+# binding via require_relative) overrides it so this test doesn't sleep for
+# real pacing/drain delays.
+def msleep(ms)
+end
+
+connected_app = Stackchan.new(ConnectedBleStub.new)
+audio_hex = "00112233" * 100   # 400 bytes of audio
+connected_app.speak_audio(audio_hex)
+stub_sent = connected_app.ble.sent
+expect("speak_audio header byte count", stub_sent[0], "<A:400>\n")
+expect("speak_audio chunk sizes, header-then-chunks order",
+       stub_sent[1..3].map { |c| c.bytesize }, [180, 180, 40])
+expect("speak_audio frame count (header + 3 chunks)", stub_sent.length, 4)
 
 # Parse helpers.
 expect("parse_ack ok", FrameCodec.parse_ack("."), :ok)
