@@ -20,7 +20,7 @@ final class SpeechSynth: NSObject {
     func synthesize(text: String, completion: @escaping (String?) -> Void) {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
-        utterance.pitchMultiplier = 1.25   // user preference: brighter, closer to the Mac `say` timbre
+        utterance.pitchMultiplier = 1.5   // user preference: cute, noticeably higher than default
 
         guard let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                             sampleRate: targetRate,
