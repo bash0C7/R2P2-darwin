@@ -79,6 +79,70 @@ module FrameCodec
     encode_pairs({ "torque" => (on ? "on" : "off") })
   end
 
+  # ---- Speak feature: subtitle + audio codec --------------------------------
+  # Mirrors stackchan-picoruby's frame_text.rb / daemon_app.rb wire contract.
+
+  TEXT_MAX_CHARS = 19       # device SUBTITLE_MAX_CHARS; display-only cap
+  AUDIO_CHUNK_BYTES = 180   # BLE write-without-response payload per 20ms
+
+  # Frame delimiters would corrupt the <text:...> frame; widen them. CR/LF
+  # become a single space. each_char (not gsub): PicoRuby's gsub drops
+  # trailing multibyte chars.
+  def self.sanitize_text(s)
+    out = ""
+    prev_space = false
+    s.each_char do |c|
+      if c == "\r" || c == "\n"
+        out += " " unless prev_space
+        prev_space = true
+        next
+      end
+      prev_space = false
+      out += case c
+             when "," then "、"
+             when "<" then "＜"
+             when ">" then "＞"
+             else c
+             end
+    end
+    out
+  end
+
+  # Multibyte-safe truncation via each_char (String#[] would need char
+  # semantics we don't want to lean on across CRuby / the reduced VM).
+  def self.truncate_chars(s, max)
+    out = ""
+    n = 0
+    s.each_char do |c|
+      break if n >= max
+      out += c
+      n += 1
+    end
+    out
+  end
+
+  def self.encode_text(s)
+    "<text:" + truncate_chars(sanitize_text(s), TEXT_MAX_CHARS) + ">\n"
+  end
+
+  def self.encode_audio_header(nbytes)
+    "<A:#{nbytes}>\n"
+  end
+
+  # hex -> array of binary chunks, AUDIO_CHUNK_BYTES each (last one shorter).
+  # Slice the ASCII hex (char == byte even under MRB_UTF8_STRING), then pack
+  # each slice, so char-based String#[] never touches binary data.
+  def self.chunk_audio_hex(hex)
+    chunks = []
+    step = AUDIO_CHUNK_BYTES * 2
+    i = 0
+    while i < hex.length
+      chunks << [hex[i, step]].pack("H*")
+      i += step
+    end
+    chunks
+  end
+
   # frame[0,1] is safe on a bare 1-char ACK byte too.
   def self.parse_ack(frame)
     case frame[0, 1]
@@ -153,6 +217,24 @@ BLE_AVAILABLE =
     false
   end
 
+# sleep_ms comes from picoruby-machine in the device VM; host CRuby has only
+# sleep. Probe by calling (the reduced VM lacks the defined? keyword).
+HAS_SLEEP_MS =
+  begin
+    sleep_ms(0)
+    true
+  rescue NameError, NoMethodError
+    false
+  end
+
+def msleep(ms)
+  if HAS_SLEEP_MS
+    sleep_ms(ms)
+  else
+    sleep(ms / 1000.0)
+  end
+end
+
 # Recording stub: used under host CRuby (no BLE) and as a graceful fallback so
 # frames sent before a connection are not lost. Records and echoes frames.
 class BleLink
@@ -179,6 +261,12 @@ class BleLink
     @sent << frame
     # Echo so vm_call's stdout capture surfaces the frame during bring-up.
     print frame
+    :ok
+  end
+
+  # Audio chunks: record without echoing (binary would trash the Output pane).
+  def write_chunk(data)
+    @sent << data
     :ok
   end
 end
@@ -263,6 +351,16 @@ if BLE_AVAILABLE
         @ble.conn_handle, @rx_value_handle, frame
       )
       print frame
+      :ok
+    end
+
+    # Audio chunk write: same radio path as write, but no print (binary) and
+    # no pending queue (stale audio bytes are useless after the fact).
+    def write_chunk(data)
+      return :dropped unless connected?
+      @ble.write_value_of_characteristic_without_response(
+        @ble.conn_handle, @rx_value_handle, data
+      )
       :ok
     end
 
@@ -371,6 +469,41 @@ class Stackchan
   # arg: "on" / "off".
   def torque(arg)
     @ble.write(FrameCodec.encode_torque(arg == "on"))
+  end
+
+  # Audio streaming timing (stackchan-picoruby daemon_app.rb contract).
+  READY_WAIT_MS = 1500    # fixed wait instead of reading <A:ready>
+  CHUNK_PACE_MS = 20      # no flow control; unpaced writes get silently cut
+  DRAIN_MARGIN_MS = 500
+
+  # arg: subtitle text (UTF-8). Sanitized + capped to 19 chars on encode.
+  def subtitle(arg)
+    @ble.write(FrameCodec.encode_text(arg))
+  end
+
+  # arg: hex-encoded G.711 mu-law bytes (8kHz mono) from SpeechSynth.swift.
+  # Writes <A:N>, waits, streams paced chunks, then sits out the device's
+  # drain window (N*1000/8000 + 3000 ms from <A:N>) so no later frame gets
+  # eaten as audio. Blocks the VM thread for the duration by design; the UI
+  # keeps Speak single-flight.
+  def speak_audio(hex)
+    unless @ble.connected?
+      print "not connected; speak dropped\n"
+      return
+    end
+    n = hex.length / 2
+    return if n == 0
+    chunks = FrameCodec.chunk_audio_hex(hex)
+    @ble.write(FrameCodec.encode_audio_header(n))
+    msleep(READY_WAIT_MS)
+    chunks.each do |c|
+      @ble.write_chunk(c)
+      msleep(CHUNK_PACE_MS)
+    end
+    drain_ms = n * 1000 / 8000 + 3000
+    remaining = drain_ms - READY_WAIT_MS - chunks.length * CHUNK_PACE_MS
+    msleep(remaining + DRAIN_MARGIN_MS) if remaining > 0
+    print "audio: #{n} bytes sent\n"
   end
 end
 

@@ -1,7 +1,7 @@
 # iOS Stack-chan操作アプリに発話機能を追加する
 
 日付: 2026-09-05
-状態: user承認待ち
+状態: 実装済み・実機確認済み（2026-09-05）。実装時の追加判断: AVSpeechSynthesizer.writeはゼロ長end markerを複数回配送するためcompletionはsingle-fireガード付き、pitchMultiplier=1.5
 
 ## 目的
 

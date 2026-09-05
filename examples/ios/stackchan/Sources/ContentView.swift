@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var connected: Bool = false
     @State private var busy: Bool = false
     @State private var connectFailed: Bool = false
+    @State private var speakText: String = "ぼくスタックチャン、かわいいよ"
+    @State private var speaking: Bool = false
 
     private let faces = ["neutral", "smile", "joy", "surprised", "sad", "angry"]
     private let ledColors = ["red", "green", "blue", "yellow", "white", "off"]
@@ -38,12 +40,14 @@ struct ContentView: View {
                         .buttonStyle(.glass)
                     }
 
-                    group("Torque") {
-                        HStack {
-                            Button("On")  { send("torque", "on") }
-                            Button("Off") { send("torque", "off") }
+                    group("Speech") {
+                        VStack(spacing: 8) {
+                            TextField("しゃべらせる言葉", text: $speakText)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Speak") { speak() }
+                                .buttonStyle(.glass)
+                                .disabled(speaking || speakText.isEmpty)
                         }
-                        .buttonStyle(.glass)
                     }
 
                     group("Output") {
@@ -135,6 +139,27 @@ struct ContentView: View {
     private func send(_ method: String, _ arg: String) {
         VMExecutor.shared.call(method, arg) { result in
             self.output = result.isEmpty ? "(no output)" : result
+        }
+    }
+
+    // Speak is long-running (synthesis, then the VM thread streams audio and
+    // sits out the device's drain window): single-flight like connect.
+    // Serial-queue ordering makes subtitle land before the audio frames.
+    private func speak() {
+        speaking = true
+        output = "Synthesizing…"
+        let text = speakText
+        send("subtitle", text)
+        SpeechSynth.shared.synthesize(text: text) { hex in
+            guard let hex else {
+                self.output = "speech synthesis failed"
+                self.speaking = false
+                return
+            }
+            VMExecutor.shared.call("speak_audio", hex) { result in
+                self.output = result.isEmpty ? "(no output)" : result
+                self.speaking = false
+            }
         }
     }
 }
