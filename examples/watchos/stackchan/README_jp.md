@@ -38,6 +38,14 @@ ruby examples/watchos/stackchan/test_frames.rb   # 全部 PASS
 rake watchos:stackchan:all     # lib -> gen -> build -> run
 ```
 
+**警告:** `lib`と`device:lib`（後述）は同じ`Vendor/lib/libmruby.a`にstageし、
+後に走った方が黙って勝つ — `ld`はarch違いのstatic archiveをerrorにせずskipするので、
+buildは`** BUILD SUCCEEDED **`のまま成立してからdyldのundefined symbolで起動時に
+crashする。`rake watchos:stackchan:all`は必ず`lib`を先に実行するので安全だが、
+`device:lib`の後に`build`や`run`だけを実行するのは危険。確認は
+`lipo -info examples/watchos/stackchan/Vendor/lib/libmruby.a`、Simulatorが
+求めるのは`arm64`。
+
 SimulatorにはBluetoothの無線が無いので、**Connectが「not found」で終わるのが
 正しい挙動**。Simulatorで実証できるのは、VMがbootすること、`app.rb`がアプリ内で
 コンパイルされること、各コントロールがVMへ届くこと。VMの出力はこれで読む。
@@ -55,6 +63,13 @@ rake watchos:stackchan:device:lib     # arm64_32 の libmruby.a（BLE込み）
 rake watchos:stackchan:device:check   # 署名なしでgeneric watch向けにリンク（実機不要）
 rake watchos:stackchan:device:all     # lib -> gen -> build -> run（ペアリング済みの接続中の実機が要る）
 ```
+
+**警告:** 同じ`Vendor/lib/libmruby.a`をSimulator向けbuildと共有する。
+`device:all`は`device:lib`を先に実行するので安全だが、Simulator向け`lib`の後に
+`device:check` / `device:build` / `device:run`だけを実行するとarch違いの
+archiveがerror無しでlinkされる。実機buildの前に
+`lipo -info examples/watchos/stackchan/Vendor/lib/libmruby.a`が`arm64_32`を
+報告することを確認する。
 
 ## UIがVMの出力をどう読むか
 

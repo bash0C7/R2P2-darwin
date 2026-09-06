@@ -40,6 +40,15 @@ ruby examples/watchos/stackchan/test_frames.rb   # all PASS
 rake watchos:stackchan:all     # lib -> gen -> build -> run
 ```
 
+**Warning:** `lib` and `device:lib` (below) both stage into the same
+`Vendor/lib/libmruby.a`, and whichever ran last wins silently — `ld` skips a
+wrong-arch static archive instead of erroring, so a build can print
+`** BUILD SUCCEEDED **` and the app still crashes at launch with a dyld
+undefined-symbol error. `rake watchos:stackchan:all` always runs `lib` first,
+so it is safe; running `build` or `run` alone after a `device:lib` is not.
+Check with `lipo -info examples/watchos/stackchan/Vendor/lib/libmruby.a` — the
+Simulator wants `arm64`.
+
 The Simulator has no Bluetooth radio, so **Connect ending in "not found" is the
 correct behaviour there**. What the Simulator does prove is that the VM boots,
 `app.rb` compiles in-app, and every control reaches the VM. Read the captured VM
@@ -58,6 +67,13 @@ rake watchos:stackchan:device:lib     # arm64_32 libmruby.a (BLE)
 rake watchos:stackchan:device:check   # link for a generic watch, unsigned — no watch needed
 rake watchos:stackchan:device:all     # lib -> gen -> build -> run (needs a paired, connected watch)
 ```
+
+**Warning:** this shares `Vendor/lib/libmruby.a` with the Simulator build
+above. `device:all` runs `device:lib` first, so it is safe; running
+`device:check`, `device:build`, or `device:run` alone after a Simulator `lib`
+will silently link the wrong-arch archive. Check with
+`lipo -info examples/watchos/stackchan/Vendor/lib/libmruby.a` — the watch wants
+`arm64_32`.
 
 ## How the UI reads the VM
 

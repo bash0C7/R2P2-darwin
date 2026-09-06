@@ -47,6 +47,13 @@ source of truth。**このファイルにはREADMEに書いていないことだ
 - gemの `ports/darwin/ext/` はSwift package。darwin portにC sourceを足すときは `ext/` の外へ置く
 - build_configのdefineを変えたら再build前に `rm -rf build/<target>` — compile ruleは `.c` の
   mtimeしか見ないのでstale `.o` が再利用され、変更が黙って効かない
+- **各exampleのSimulator用とdevice用のlibmruby.aは同じ `Vendor/lib/libmruby.a` を共有する。**
+  `lib` taskと `device:lib` taskは同じpathへ上書きし合い、guardが無い。`ld` はarch違いの
+  static archiveをerrorにせず黙ってskipするので、片方のarchが刺さったままでも
+  `** BUILD SUCCEEDED **` が出て、appは起動時に `-undefined dynamic_lookup` の
+  Swift package側の未定義symbol（`_global_mrb` 等）でdyld crashする。`device:lib` の後に
+  Simulator buildをする前（逆も同様）は必ずそのexampleの `lib` taskを再実行する。
+  確認は `lipo -info examples/<platform>/<name>/Vendor/lib/libmruby.a`
 
 ## 完了の線引き
 
