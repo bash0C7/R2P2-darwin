@@ -45,8 +45,13 @@ source of truth。**このファイルにはREADMEに書いていないことだ
   `-D` を抽出して突合
 - `picoruby-mruby/mrbgem.rake` を変えたら `build_config/recompile_arm64_32.rb` も追従する
 - gemの `ports/darwin/ext/` はSwift package。darwin portにC sourceを足すときは `ext/` の外へ置く
-- build_configのdefineを変えたら再build前に `rm -rf build/<target>` — compile ruleは `.c` の
-  mtimeしか見ないのでstale `.o` が再利用され、変更が黙って効かない
+- **`build/<target>/` のstale化は `stage_libmruby` のstampが防ぐ。** compile ruleは `.c` の
+  mtimeしか見ないので、build_configを変えても `rake refresh` でvendor/picorubyを入れ替えても、
+  既存 `.o` が新しいsourceより新しければ何も再compileされず、lib taskは成功したと言いながら
+  前のarchiveをstageする。`stage_libmruby` は `build/<target>/.r2p2-build-stamp` に
+  「picorubyのSHA + build_configのdigest」を記録し、一致しなければdirごと捨てて再buildする。
+  stampを回避してbuildするpath（`recompile_arm64_32.rb` の直接起動など）を足すときは、
+  stampの更新も一緒に足す
 - **各exampleのSimulator用とdevice用のlibmruby.aは同じ `Vendor/lib/libmruby.a` を共有する。**
   `lib` taskと `device:lib` taskは同じpathへ上書きし合い、guardが無い。`ld` はarch違いの
   static archiveをerrorにせず黙ってskipするので、片方のarchが刺さったままでも
@@ -57,9 +62,15 @@ source of truth。**このファイルにはREADMEに書いていないことだ
 
 ## 完了の線引き
 
-`rake smoke`（host、CIが回す）→ `rake ios:<name>:device:check`（署名不要）→
+`rake regress:unit`（host、PRごとにCIが回す）→ `rake ios:<name>:device:check`（署名不要）→
 `rake ios:<name>:observe`（挙動）。実機の挙動は実機で実証するまで「動いた」と書かない。
 実機・実serviceが使えないなら、その旨を1行報告して完了宣言を保留する。
+
+全exampleの横断確認は `rake regress`（unit → 全example device link → 全example Simulator build）。
+step単位のlogは `build/regress/` に残り、失敗しても最後まで走ってからまとめて落ちる。
+1 exampleだけなら `EXAMPLE=ios:torch rake regress:one`。CIでは
+`.github/workflows/regression.yml` が同じ `regress:one` をexampleごとに並列で回す（週次 + 手動）。
+matrixは `rake regress:examples` から作るので、exampleを足してもworkflowの編集は要らない。
 
 device系rakeをtmux / subagentから回すときはcommand側で `LANG` と `RBENV_VERSION` を明示する。
 端末名に非ASCIIがあると `devicectl` / `xcodebuild -showdestinations` の出力に対するRakefileの

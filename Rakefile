@@ -12,12 +12,47 @@ def mruby_env(cfg)
   { "MRUBY_BUILD_DIR" => BUILD_DIR, "MRUBY_CONFIG" => File.absolute_path(cfg) }
 end
 
+# What a build/<name>/ directory was produced from: the picoruby tree it
+# compiled and the build_config that drove it. build_config files are
+# self-contained (none require another), so the config's own digest is the whole
+# story for the config side.
+def build_stamp(config_basename)
+  cfg = File.join(ROOT, "build_config", config_basename)
+  sha = if File.directory?(File.join(PICORUBY_SRC, ".git"))
+          `git -C #{PICORUBY_SRC.shellescape} rev-parse HEAD`.strip
+        else
+          ""
+        end
+  Digest::SHA256.hexdigest("#{sha}\n#{Digest::SHA256.file(cfg).hexdigest}")
+end
+
+# mruby's compile rule rebuilds an object only when its .c is newer, so a
+# build/<name>/ left from an earlier picoruby or an earlier build_config
+# survives both untouched. `rake refresh` is the trap: a freshly fetched tree's
+# files can carry mtimes OLDER than the .o files already in build/, so every
+# object looks up to date, nothing recompiles, and the lib task reports success
+# while staging the previous picoruby's archive. The app then fails to link
+# against a symbol that moved — the error names the symbol, never the stale
+# directory. Stamp each build dir with its inputs and wipe it when they change.
+def invalidate_stale_build(config_basename, build_name)
+  want  = build_stamp(config_basename)
+  dir   = File.join(BUILD_DIR, build_name)
+  stamp = File.join(dir, ".r2p2-build-stamp")
+  if File.directory?(dir) && (!File.file?(stamp) || File.read(stamp).strip != want)
+    puts "build/#{build_name}: picoruby or build_config changed since it was built — rebuilding from scratch"
+    rm_rf dir
+  end
+  want
+end
+
 # Cross-build libmruby.a with the given build_config and stage the archive +
 # picoruby headers under <vendor_dir>. `build_name` is the MRuby build name (the
 # build/<name>/ output dir). Shared by each example's lib task.
 def stage_libmruby(config_basename, build_name, vendor_dir)
+  stamp = invalidate_stale_build(config_basename, build_name)
   cfg = File.join(ROOT, "build_config", config_basename)
   sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
+  File.write(File.join(BUILD_DIR, build_name, ".r2p2-build-stamp"), stamp)
   lib = File.join(BUILD_DIR, build_name, "lib", "libmruby.a")
   raise "expected #{lib} not found" unless File.file?(lib)
   rm_rf vendor_dir
@@ -630,6 +665,101 @@ namespace :determinism do
     end
   end
 end
+
+# ---- regression sweep -------------------------------------------------------
+#
+# Every example, in one command. The iOS half is derived from IOS_EXAMPLES, so a
+# new iOS example joins the sweep by being declared there. The watchOS
+# namespaces are written out by hand in this file, so they are listed by hand
+# here too — add a watchOS example and this list is the one place to extend.
+REGRESSION_EXAMPLES = IOS_EXAMPLES.map { |e| "ios:#{e[:name]}" } +
+                      %w[watchos:led watchos:stackchan]
+
+REGRESS_LOG_DIR = File.join(BUILD_DIR, "regress")
+
+# Run each rake task in its own process, keep going past failures, and report
+# once at the end. A sweep that aborts on the first failure hides every problem
+# behind it, which is the opposite of what a regression run is for. Per-step
+# logs land under build/regress/ so a failure is diagnosable without re-running
+# the whole matrix; CI uploads that directory.
+def regress(steps)
+  mkdir_p REGRESS_LOG_DIR
+  results = steps.map do |task|
+    log = File.join(REGRESS_LOG_DIR, "#{task.tr(':', '_')}.log")
+    ok  = system("cd #{ROOT.shellescape} && rake #{task} > #{log.shellescape} 2>&1")
+    puts format("%-42s %s", task, ok ? "PASS" : "FAIL")
+    $stdout.flush
+    [task, ok, log]
+  end
+
+  failed = results.reject { |_, ok, _| ok }
+  failed.each do |task, _, log|
+    puts "\n===== #{task} FAILED — last 30 lines of #{log} ====="
+    puts File.readlines(log).last(30).join
+  end
+  puts "\n#{results.length - failed.length}/#{results.length} passed"
+  abort "regression failed: #{failed.map(&:first).join(', ')}" unless failed.empty?
+end
+
+namespace :regress do
+  desc "Host-only checks: every example's standalone unit test + the bridge smoke test (no Xcode, no Simulator)"
+  task :unit do
+    tests = Dir.glob(File.join(ROOT, "examples", "**", "test_*.rb")).sort
+    abort "no examples/**/test_*.rb found — the glob or the example layout moved" if tests.empty?
+    mkdir_p REGRESS_LOG_DIR
+    results = tests.map do |test|
+      rel = test.sub("#{ROOT}/", "")
+      log = File.join(REGRESS_LOG_DIR, "#{rel.tr('/', '_')}.log")
+      ok  = system(RbConfig.ruby, test, out: log, err: [:child, :out])
+      puts format("%-42s %s", rel, ok ? "PASS" : "FAIL")
+      [rel, ok, log]
+    end
+
+    failed = results.reject { |_, ok, _| ok }
+    failed.each { |rel, _, log| puts "\n===== #{rel} FAILED =====\n#{File.read(log)}" }
+    abort "unit tests failed: #{failed.map(&:first).join(', ')}" unless failed.empty?
+
+    # Shelled out like every other sweep step so `smoke` resolves its own
+    # host:lib dependency in a clean process.
+    regress(["smoke"])
+  end
+
+  desc "Link every example for a real device without signing (no device needed)"
+  task :device do
+    regress(REGRESSION_EXAMPLES.flat_map { |ns| ["#{ns}:device:lib", "#{ns}:gen", "#{ns}:device:check"] })
+  end
+
+  desc "Build every example for the Simulator"
+  task :sim do
+    regress(REGRESSION_EXAMPLES.flat_map { |ns| ["#{ns}:lib", "#{ns}:gen", "#{ns}:build"] })
+  end
+
+  desc "Link and build ONE example (env: EXAMPLE=ios:torch) — the unit the CI regression matrix fans out over"
+  task :one do
+    ns = ENV["EXAMPLE"].to_s
+    unless REGRESSION_EXAMPLES.include?(ns)
+      abort "EXAMPLE=#{ns.inspect} is not one of: #{REGRESSION_EXAMPLES.join(', ')}"
+    end
+    regress(["#{ns}:device:lib", "#{ns}:gen", "#{ns}:device:check",
+             "#{ns}:lib", "#{ns}:gen", "#{ns}:build"])
+  end
+
+  # Emits the example list as JSON so .github/workflows/regression.yml can build
+  # its matrix from it. Keeps IOS_EXAMPLES the single place an example is
+  # declared — a new example joins CI without anyone editing the workflow.
+  # No desc: it is plumbing, not something to run by hand.
+  task :examples do
+    require "json"
+    puts JSON.generate(REGRESSION_EXAMPLES)
+  end
+end
+
+# Order is load-bearing. Each example's device:lib and lib overwrite the SAME
+# examples/<platform>/<name>/Vendor/lib/libmruby.a, so the device sweep must
+# finish before the Simulator sweep, and the Simulator sweep must run last —
+# that leaves every Vendor holding the arch `rake <example>:run` needs.
+desc "Full regression: unit tests, then device link checks, then Simulator builds, for every example"
+task regress: ["regress:unit", "regress:device", "regress:sim", "macos:build"]
 
 desc "Compile + run the bridge smoke test on the host"
 task smoke: "host:lib" do
