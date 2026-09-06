@@ -1,0 +1,78 @@
+name: WatchStackchan
+options:
+  bundleIdPrefix: com.bash0c7.picoruby
+  deploymentTarget:
+    watchOS: "26.0"
+packages:
+  # The Darwin (CoreBluetooth) BLE backend Swift package, built here in its
+  # central-only watchOS configuration. Its pble_* C symbols resolve the
+  # undefined references in the staged libmruby.a at app link time.
+  PicoBLEDarwin:
+    path: ../../../vendor/picoruby/mrbgems/picoruby-ble/ports/darwin/ext
+targets:
+  WatchStackchan:
+    type: application
+    platform: watchOS
+    sources:
+      - path: Sources
+      - path: app.rb
+        buildPhase: resources
+      - path: ../../../bridge
+        includes:
+          - "picoruby_bridge.c"
+          - "picoruby_bridge.h"
+          - "task_hal_ios.c"
+    dependencies:
+      # Dynamic Swift-package product: link AND embed so dyld can resolve the
+      # pble_* symbols (the framework lands in the app's Frameworks/ dir).
+      - package: PicoBLEDarwin
+        embed: true
+    settings:
+      base:
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/WatchStackchan-Bridging-Header.h
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "$(inherited)"
+          - "PICORB_ALLOC_ESTALLOC"
+          - "PICORB_ALLOC_ALIGN=8"
+          - "MRB_NO_BOXING"
+          - "MRB_INT64"
+          - "MRB_UTF8_STRING"
+          - "PICORB_PLATFORM_POSIX"
+          - "PICORB_PLATFORM_DARWIN"
+          - "MRB_TICK_UNIT=4"
+          - "MRB_TIMESLICE_TICK_COUNT=3"
+          - "MRB_USE_TASK_SCHEDULER=1"
+          - "MRB_USE_VM_SWITCH_DISPATCH=1"
+          - "MRB_BASELINE_PROFILE=1"
+          # The bridge defaults to 8MB. led-toggle runs a bare VM in 2MB; this
+          # VM additionally carries picoruby-ble and mbedtls, so 4MB. See the
+          # heap tuning note in Task 6 if the app is jetsam-killed or the VM
+          # fails to open.
+          - "HEAP_SIZE=4194304"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/../../../vendor/picoruby/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/mruby-compiler/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/mruby-compiler/lib/prism/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/include"
+          - "$(SRCROOT)/../../../build/watchos-stackchan-sim/include"
+          - "$(SRCROOT)/../../../build/watchos-stackchan-device/include"
+          - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
+          - "$(SRCROOT)/../../../bridge"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/lib"
+        # -framework Security resolves SecRandomCopyBytes, the entropy source of
+        # the mbedtls / rng Darwin ports picoruby-ble pulls in (ble.rb requires
+        # mbedtls at boot); the staged archive leaves it undefined.
+        OTHER_LDFLAGS:
+          - "-lmruby"
+          - "-framework"
+          - "Security"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_WKApplication: "YES"
+        INFOPLIST_KEY_WKWatchOnly: "YES"
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Connect to your Stack-chan robot over Bluetooth."
+        TARGETED_DEVICE_FAMILY: "4"
+        PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.WatchStackchan
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: SM5792D355  # Apple Team ID (Xcode > Settings > Accounts) for device builds

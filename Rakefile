@@ -513,6 +513,11 @@ namespace :watchos do
     task lib: :setup do
       stage_libmruby("r2p2-picoruby-watchos-stackchan-sim.rb", "watchos-stackchan-sim", ws_vendor)
     end
+
+    desc "Generate the Watch Stack-chan Xcode project from project.yml"
+    task :gen do
+      sh "cd #{ws_dir.shellescape} && xcodegen generate"
+    end
   end
 end
 
