@@ -3,8 +3,10 @@
 A watchOS-only Stack-chan controller. The PicoRuby VM runs on the Apple Watch
 and drives picoruby-ble's central role directly over CoreBluetooth — there is no
 iPhone companion app. It is a subset of [`../../ios/stackchan`](../../ios/stackchan)
-with three controls:
+with four interactive rows:
 
+- **Connect** — scans for the robot over BLE and binds its write characteristic,
+  blocking for up to 10 seconds; tap this first
 - **Face** — toggles between two happy faces, `smile` and `joy`
 - **LED** — toggles a blink in a randomly chosen colour, and off again
 - **ぐるっと (sweep)** — one tap sends left → right → up → neutral

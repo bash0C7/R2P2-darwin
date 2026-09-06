@@ -112,6 +112,12 @@ HEX_DIGITS = "0123456789abcdef"
 # Substring matched against the advertised local name to pick the robot.
 STACKCHAN_NAME = "StackChan"
 
+# watchOS suspends an app aggressively when the wrist drops, and the scan blocks
+# the VM thread for its whole duration. Ten seconds is short enough to survive a
+# glance and long enough to find a robot that is already advertising; the UI
+# makes re-tapping Connect cheap.
+SCAN_TIMEOUT_MS = 10000
+
 # picoruby-ble's Ruby layer (BLE#initialize(role), scan, connect, ...) is a
 # picogem: the C part defines the BLE constant at boot, the Ruby part loads on
 # require (picoruby-require, pulled in by picoruby-machine). Host CRuby has no
@@ -304,12 +310,6 @@ if BLE_AVAILABLE
     end
   end
 end
-
-# watchOS suspends an app aggressively when the wrist drops, and the scan blocks
-# the VM thread for its whole duration. Ten seconds is short enough to survive a
-# glance and long enough to find a robot that is already advertising; the UI
-# makes re-tapping Connect cheap.
-SCAN_TIMEOUT_MS = 10000
 
 # The dispatcher object the persistent-VM bridge calls. vm_call(method, arg)
 # invokes one of these with a single String arg from the Swift UI.

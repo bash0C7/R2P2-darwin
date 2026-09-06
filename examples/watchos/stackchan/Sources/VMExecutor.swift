@@ -5,9 +5,13 @@ import Foundation
 //
 // On watchOS that thread cannot be a plain DispatchQueue: the system default
 // stack is very small there and mruby's initialization overflows it. A
-// dedicated Thread lets us set stackSize explicitly. The serial workQueue is
-// pinned to that thread, and every VM touch is funnelled through it — the
-// SwiftUI layer only ever posts closures here and never calls vm_* directly.
+// dedicated Thread lets us set stackSize explicitly. workQueue is NOT pinned to
+// that thread — it is a plain serial DispatchQueue, and libdispatch is free to
+// service it from any worker thread. What matters for mruby is serialization,
+// not thread identity: a serial queue guarantees no two VM calls ever run
+// concurrently, which is all vm_call needs. Every VM touch is funnelled through
+// workQueue — the SwiftUI layer only ever posts closures here and never calls
+// vm_* directly.
 final class VMExecutor {
     static let shared = VMExecutor()
 
@@ -75,8 +79,11 @@ final class VMExecutor {
     }
 }
 
-// Dedicated thread that owns the mruby VM. All VM calls must run on workQueue,
-// which is pinned to this thread.
+// Dedicated thread that owns the mruby VM. All VM calls must run on workQueue;
+// workQueue is a serial DispatchQueue, not pinned to this thread — it may run
+// on any libdispatch worker thread. That serialization is what mruby needs
+// (no concurrent VM calls); the Thread itself exists only for its 4 MB stack,
+// which vm_open (called from main() below, on this Thread) requires.
 final class VMThread: Thread {
     var vm: UnsafeMutableRawPointer?
     let workQueue: DispatchQueue

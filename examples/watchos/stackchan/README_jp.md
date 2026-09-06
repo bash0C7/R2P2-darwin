@@ -2,8 +2,10 @@
 
 watchOS単体で動くStack-chan操作アプリ。PicoRuby VMがApple Watch上で動き、
 picoruby-bleのcentralロールをCoreBluetooth経由で直接駆動する。iPhoneのcompanion
-アプリは無い。[`../../ios/stackchan`](../../ios/stackchan) のsubsetで、操作は3つ。
+アプリは無い。[`../../ios/stackchan`](../../ios/stackchan)のsubsetで、操作行は4つ。
 
+- **Connect** — BLEでロボットをスキャンし、write用characteristicを結びつける
+  （最大10秒ブロック）。最初にタップする
 - **Face** — たのしそうな顔2パターン（`smile` / `joy`）をトグル
 - **LED** — ランダムな色でblink開始、もう一度で停止
 - **ぐるっと** — 1タップで 左 → 右 → 上 → ニュートラル
