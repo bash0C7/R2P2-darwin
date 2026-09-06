@@ -104,7 +104,11 @@ final class VMThread: Thread {
             DispatchQueue.main.async { self.onReady("(VM failed to start)") }
             return
         }
-        vm = handle
+        // Publish `vm` through workQueue: main() runs on this Thread itself,
+        // but every read of `vm` (call/tick) runs on workQueue, so writing it
+        // there too gives the write a happens-before edge over those reads
+        // instead of racing them.
+        workQueue.sync { self.vm = handle }
         NSLog("[WatchStackchan] VM opened")
         DispatchQueue.main.async { self.onReady("VM ready") }
         executor?.startTick()
