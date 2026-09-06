@@ -61,6 +61,16 @@ targets:
           - "$(SRCROOT)/../../../bridge"
         LIBRARY_SEARCH_PATHS:
           - "$(SRCROOT)/Vendor/lib"
+        # watchOS app targets do NOT get @executable_path/Frameworks in their
+        # default rpath the way iOS app targets do, so the embedded
+        # PicoBLEDarwin.framework is unreachable at load time without this.
+        # The Simulator hides it: the remaining rpath entry is this Mac's
+        # absolute PackageFrameworks build dir, which the Simulator can read and
+        # a physical watch cannot — the app launches on the Simulator and dies on
+        # the watch with "Library not loaded: @rpath/PicoBLEDarwin.framework".
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
         # -framework Security resolves SecRandomCopyBytes, the entropy source of
         # the mbedtls / rng Darwin ports picoruby-ble pulls in (ble.rb requires
         # mbedtls at boot); the staged archive leaves it undefined.
