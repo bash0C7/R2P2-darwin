@@ -340,15 +340,15 @@ R2P2-darwin/
                          watchos:<example>:* / determinism:* / clean / clobber
   rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
   build_config/
-    r2p2-picoruby-ios-<example>-{sim,device}.rb    example ごとの iOS クロスビルド
+    r2p2-picoruby-ios-<example>-{sim,device}.rb     example ごとの iOS クロスビルド
     r2p2-picoruby-watchos-<example>-{sim,device}.rb watchOS クロスビルド
-    recompile_arm64_32.rb                          Apple Watch 向け arm64_32 再アーカイブ
-    r2p2-picoruby-darwin{,-ble,-single}.rb         macOS ホストビルド
-    r2p2-picoruby-host.rb                          `rake smoke` が使うホストビルド
+    recompile_arm64_32.rb                           Apple Watch 向け arm64_32 再アーカイブ
+    r2p2-picoruby-darwin{,-ble,-single}.rb          macOS ホストビルド
+    r2p2-picoruby-host.rb                           `rake smoke` が使うホストビルド
     r2p2-picoruby-ios-{rng,mbedtls,io-console}-sim.rb
-                                                   単一 gem の darwin port 検証用
-                                                   （rake タスク無し。下記参照）
-    r2p2-stackchan-pc.rb                           stackchan-picoruby の PC 側ホストビルド
+                                                    単一 gem の darwin port 検証用
+                                                    （rake タスク無し。下記参照）
+    r2p2-stackchan-pc.rb                            stackchan-picoruby の PC 側ホストビルド
   bridge/                picoruby_bridge.{c,h}, task_hal_ios.c, smoke_test.c
   examples/
     ios/<name>/          SwiftUI アプリ + app.rb（必要なら example 専用 gem）

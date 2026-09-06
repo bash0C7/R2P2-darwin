@@ -346,15 +346,15 @@ R2P2-darwin/
                          watchos:<example>:* / determinism:* / clean / clobber
   rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
   build_config/
-    r2p2-picoruby-ios-<example>-{sim,device}.rb    per-example iOS cross-builds
+    r2p2-picoruby-ios-<example>-{sim,device}.rb     per-example iOS cross-builds
     r2p2-picoruby-watchos-<example>-{sim,device}.rb watchOS cross-builds
-    recompile_arm64_32.rb                          arm64_32 re-archive for the watch
-    r2p2-picoruby-darwin{,-ble,-single}.rb         macOS host builds
-    r2p2-picoruby-host.rb                          host build behind `rake smoke`
+    recompile_arm64_32.rb                           arm64_32 re-archive for the watch
+    r2p2-picoruby-darwin{,-ble,-single}.rb          macOS host builds
+    r2p2-picoruby-host.rb                           host build behind `rake smoke`
     r2p2-picoruby-ios-{rng,mbedtls,io-console}-sim.rb
-                                                   single-gem darwin-port probes (no rake
-                                                   task; see below)
-    r2p2-stackchan-pc.rb                           host build for stackchan-picoruby's PC side
+                                                    single-gem darwin-port probes (no rake
+                                                    task; see below)
+    r2p2-stackchan-pc.rb                            host build for stackchan-picoruby's PC side
   bridge/                picoruby_bridge.{c,h}, task_hal_ios.c, smoke_test.c
   examples/
     ios/<name>/          SwiftUI app + app.rb (+ example-local gems where used)
