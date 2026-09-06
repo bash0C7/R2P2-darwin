@@ -472,7 +472,8 @@ namespace :watchos do
         # stage_libmruby copies the fat/arm64 archive mruby just built; the
         # physical watch needs arm64_32. Recompile in place and re-stage so
         # Vendor/lib never ends up with an arch the device can't run.
-        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape}"
+        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape} " \
+           "watchos-device r2p2-picoruby-watchos-device.rb"
         lib = File.join(BUILD_DIR, "watchos-device", "lib", "libmruby.a")
         cp lib, File.join(watch_vendor, "lib", "libmruby.a")
         puts "Re-staged arm64_32 libmruby.a under #{watch_vendor}"
@@ -533,6 +534,42 @@ namespace :watchos do
 
     desc "Full Watch Stack-chan pipeline: lib -> gen -> build -> run"
     task all: [:lib, :gen, :build, :run]
+
+    namespace :device do
+      desc "Cross-build libmruby.a for watchOS device (arm64_32, BLE) and stage under examples/watchos/stackchan/Vendor (env: WATCHOS_MIN)"
+      task lib: :setup do
+        stage_libmruby("r2p2-picoruby-watchos-stackchan-device.rb", "watchos-stackchan-device", ws_vendor)
+        # stage_libmruby copies the fat/arm64 archive mruby just built; the
+        # physical watch needs arm64_32. Recompile in place and re-stage so
+        # Vendor/lib never ends up with an arch the device can't run.
+        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape} " \
+           "watchos-stackchan-device r2p2-picoruby-watchos-stackchan-device.rb"
+        lib = File.join(BUILD_DIR, "watchos-stackchan-device", "lib", "libmruby.a")
+        cp lib, File.join(ws_vendor, "lib", "libmruby.a")
+        puts "Re-staged arm64_32 libmruby.a under #{ws_vendor}"
+      end
+
+      desc "Build the Watch Stack-chan app, signed, for the connected Apple Watch"
+      task :build do
+        device_build(ws_proj, "WatchStackchan", ws_device_derived,
+                     archs: "arm64_32", platform: "watchOS")
+      end
+
+      desc "Link the Watch Stack-chan app for a generic watchOS device without signing (no watch needed)"
+      task :check do
+        device_check_build(ws_proj, "WatchStackchan", ws_device_derived,
+                           archs: "arm64_32", platform: "watchOS")
+      end
+
+      desc "Install and launch the Watch Stack-chan app on the connected Apple Watch"
+      task :run do
+        app = built_app(ws_device_derived, "*-watchos", "WatchStackchan", "watchos:stackchan:device:build")
+        device_install_launch(/Watch/, "Apple Watch", app, ws_bundle)
+      end
+
+      desc "Full Watch Stack-chan device pipeline: lib -> gen -> build -> run (needs a connected, signed Apple Watch)"
+      task all: [:lib, "watchos:stackchan:gen", :build, :run]
+    end
   end
 end
 

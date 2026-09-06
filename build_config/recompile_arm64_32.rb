@@ -1,23 +1,38 @@
 #!/usr/bin/env ruby
-# Recompile arm64 objects in build/watchos-device as arm64_32
+# Recompile arm64 objects in a watchOS device build dir as arm64_32
 # and create a proper arm64_32 libmruby.a for watchOS device.
 #
-# Run from worktree root: ruby build_config/recompile_arm64_32.rb
+# Run from worktree root:
+#   ruby build_config/recompile_arm64_32.rb [build_name] [config_basename]
+#
+# Defaults keep the led-toggle invocation working unchanged:
+#   build_name       "watchos-device"
+#   config_basename  "r2p2-picoruby-watchos-device.rb"
+#
+# The Stack-chan watch example passes its own pair:
+#   ruby build_config/recompile_arm64_32.rb \
+#     watchos-stackchan-device r2p2-picoruby-watchos-stackchan-device.rb
 
 require 'shellwords'
 
+BUILD_NAME      = ARGV[0] || "watchos-device"
+CONFIG_BASENAME = ARGV[1] || "r2p2-picoruby-watchos-device.rb"
+
 ROOT      = File.expand_path("..", __dir__)
-BUILD_DIR = File.join(ROOT, "build", "watchos-device")
+BUILD_DIR = File.join(ROOT, "build", BUILD_NAME)
 SDK       = `xcrun --sdk watchos --show-sdk-path`.strip
 CLANG     = `xcrun --sdk watchos --find clang`.strip
 AR        = `xcrun --sdk watchos --find ar`.strip
+
+raise "build dir not found: #{BUILD_DIR} (run the device lib task first)" unless Dir.exist?(BUILD_DIR)
+puts "Recompiling #{BUILD_NAME} against #{CONFIG_BASENAME}"
 
 # Single source of truth: read the cc.defines straight from the device
 # build_config so the arm64_32 recompile can never drift from what `rake
 # watchos:led:device:lib` compiled the other objects with. A mismatch here
 # (esp. MRB_INT64 / MRB_NO_BOXING) yields a libmruby.a whose objects disagree
 # on the mrb_value layout — a silent on-device corruption.
-CONFIG_RB = File.join(__dir__, "r2p2-picoruby-watchos-device.rb")
+CONFIG_RB = File.join(__dir__, CONFIG_BASENAME)
 config_src = File.read(CONFIG_RB)
 defs = config_src.scan(/conf\.cc\.defines\s*<<\s*"([^"]+)"/).flatten
 raise "no cc.defines found in #{CONFIG_RB}" if defs.empty?
@@ -45,7 +60,7 @@ raise "no watchos_min derivation found in #{CONFIG_RB}" unless min_default
 WATCHOS_MIN = ENV["WATCHOS_MIN"] || min_default
 
 INCLUDES = [
-  "build/watchos-device/include",
+  File.join("build", BUILD_NAME, "include"),
   "vendor/picoruby/include",
   "vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include",
   "vendor/picoruby/mrbgems/picoruby-mruby/include",
@@ -116,7 +131,7 @@ end
 all_objs = (existing_arm32 + new_arm32_objs).uniq
 puts "Archiving #{all_objs.count} arm64_32 objects..."
 
-lib_out = File.join(ROOT, "build", "watchos-device", "lib", "libmruby.a")
+lib_out = File.join(BUILD_DIR, "lib", "libmruby.a")
 `cp #{lib_out.shellescape} #{(lib_out + ".bak").shellescape}` if File.exist?(lib_out)
 # Must remove the fat file before ar can create a fresh arm64_32-only archive
 File.delete(lib_out) if File.exist?(lib_out)
