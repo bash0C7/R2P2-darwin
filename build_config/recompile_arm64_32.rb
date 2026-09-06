@@ -49,6 +49,12 @@ end
 # HAVE_MRUBY_IO_GEM comes from mruby-io (build-wide), NDEBUG from picoruby's
 # non-debug build (lib/picoruby/build.rb).
 gem_defs = %w[PICORB_VM_MRUBY MRB_USE_TASK_SCHEDULER MRB_BASELINE_PROFILE=1 HAVE_MRUBY_IO_GEM NDEBUG=1]
+
+# picoruby-mbedtls's mrbgem.rake (spec.cc.defines) selects mbedtls's feature
+# set through this config header; an object recompiled without it disagrees
+# with the rest of the archive on struct layout — silent, not a link error.
+MBEDTLS_DIR = File.join(ROOT, "vendor", "picoruby", "mrbgems", "picoruby-mbedtls")
+gem_defs << "MBEDTLS_CONFIG_FILE='\"#{MBEDTLS_DIR}/include/mbedtls_config.h\"'"
 puts "Defines from gems (#{gem_defs.size}): #{gem_defs.join(' ')}"
 DEFINES = (defs + gem_defs).map { |d| "-D#{d}" }.join(" ")
 
@@ -59,6 +65,9 @@ min_default = config_src[/watchos_min\s*=\s*ENV\["WATCHOS_MIN"\]\s*\|\|\s*"([^"]
 raise "no watchos_min derivation found in #{CONFIG_RB}" unless min_default
 WATCHOS_MIN = ENV["WATCHOS_MIN"] || min_default
 
+# Mirrors the gem set a device build_config can pull in; grows when a gem
+# with its own headers joins one. picoruby-ble bringing picoruby-mbedtls into
+# a watchOS config for the first time is what the last two entries are for.
 INCLUDES = [
   File.join("build", BUILD_NAME, "include"),
   "vendor/picoruby/include",
@@ -73,10 +82,15 @@ INCLUDES = [
   "vendor/picoruby/mrbgems/picoruby-io-console/include",
   "vendor/picoruby/mrbgems/hal-io-darwin/src",
   "vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/src",
+  "vendor/picoruby/mrbgems/picoruby-mbedtls/lib/mbedtls/include",
+  "vendor/picoruby/mrbgems/picoruby-mbedtls/include",
 ].map { |p| "-I #{File.join(ROOT, p).shellescape}" }.join(" ")
 
+# -Wno-undef: config_adjust_ssl.h #undefs a macro that ssl.h then tests with
+# a bare #if (upstream mbedtls bug, present through v3.6.7); matches the flag
+# picoruby-mbedtls's mrbgem.rake adds for the same reason.
 BASE_FLAGS = "-arch arm64_32 -isysroot #{SDK.shellescape} " \
-             "-mwatchos-version-min=#{WATCHOS_MIN} -O2 " \
+             "-mwatchos-version-min=#{WATCHOS_MIN} -O2 -Wno-undef " \
              "#{DEFINES} #{INCLUDES}"
 
 def arm64?(path)
@@ -122,6 +136,13 @@ end
 
 puts "\n#{new_arm32_objs.count} compiled OK, #{failed.count} failed"
 failed.each { |src, err| puts "  FAIL: #{src}\n    #{err.lines.first.to_s.strip}" }
+
+unless failed.empty?
+  abort "\n#{failed.count} source(s) failed to recompile for arm64_32. " \
+        "Refusing to archive a partial libmruby.a — the staged library would be " \
+        "missing these objects. INCLUDES and gem_defs must mirror the flags the gems " \
+        "add to the real build; a newly added gem is the usual cause."
+end
 
 # Combine with existing arm64_32 objects
 existing_arm32 = Dir.glob(File.join(BUILD_DIR, "**", "*.o")).select do |o|
