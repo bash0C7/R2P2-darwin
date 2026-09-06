@@ -157,6 +157,7 @@ iOS / watchOSのexampleはいずれもSwiftUIアプリで、振る舞いは`app.
 | [ios/stackchan](examples/ios/stackchan/README_jp.md) | `ios:stackchan` | NUS経由で[Stack-chan](https://github.com/meganetaaan/stack-chan)を操るBLEセントラル |
 | [ios/tilt-synth](examples/ios/tilt-synth/README_jp.md) | `ios:tiltsynth` | Device MotionからFM音源へ。音楽的マッピングはRuby側 |
 | [watchos/led-toggle](examples/watchos/led-toggle/README_jp.md) | `watchos:led` | Apple Watch（`arm64_32`）上で動くRubyの状態機械 |
+| [watchos/stackchan](examples/watchos/stackchan/README_jp.md) | `watchos:stackchan` | 腕の上のStack-chan操作アプリ。RubyのBLEセントラル、watch単体 |
 | [macos/ls](examples/macos/ls/README_jp.md) | — | `rake macos:single`のデモスクリプト |
 
 どのnamespaceも同じ4ステップとそれを連結する`all`、さらに接続した実機に対して
@@ -336,7 +337,7 @@ upstreamの`picoruby/picoruby` masterにはこれらのportがありません。
 ```
 R2P2-darwin/
   Rakefile               check / setup / refresh / smoke / ios:<example>:* /
-                         watchos:led:* / determinism:* / clean / clobber
+                         watchos:<example>:* / determinism:* / clean / clobber
   rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
   build_config/
     r2p2-picoruby-ios-<example>-{sim,device}.rb    example ごとの iOS クロスビルド
@@ -351,7 +352,7 @@ R2P2-darwin/
   bridge/                picoruby_bridge.{c,h}, task_hal_ios.c, smoke_test.c
   examples/
     ios/<name>/          SwiftUI アプリ + app.rb（必要なら example 専用 gem）
-    watchos/led-toggle/  watchOS example
+    watchos/<name>/      SwiftUIアプリ + app.rb、watch単体
     macos/ls/            rake macos:single のデモスクリプト
   vendor/picoruby/       rake setup が取得（gitignore 対象）
   build/                 全ビルド出力、MRUBY_BUILD_DIR（gitignore 対象）
