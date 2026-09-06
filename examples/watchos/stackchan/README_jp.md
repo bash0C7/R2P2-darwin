@@ -7,7 +7,7 @@ picoruby-bleのcentralロールをCoreBluetooth経由で直接駆動する。iPh
 - **Connect** — BLEでロボットをスキャンし、write用characteristicを結びつける
   （最大10秒ブロック）。最初にタップする
 - **Face** — たのしそうな顔2パターン（`smile` / `joy`）をトグル
-- **LED** — ランダムな色でblink開始、もう一度で停止
+- **LED** — 6色をランダムな順に切り替えながら約3秒blinkし、最後に自動で消灯する
 - **ぐるっと** — 1タップで 左 → 右 → 上 → ニュートラル
 
 speak（字幕 + mu-law音声）とtorque、touchイベントはこのexampleのスコープ外。
@@ -74,7 +74,7 @@ archiveがerror無しでlinkされる。実機buildの前に
 ## UIがVMの出力をどう読むか
 
 `app.rb`は書き込んだBLEフレームを毎回echoするので、`vm_call`のcaptured output
-は1行ではない。`face_toggle` / `led_toggle` / `head_sweep`はそれぞれprefix付きの
+は1行ではない。`face_toggle` / `led_show` / `head_sweep`はそれぞれprefix付きの
 状態行を出し、SwiftUI層は出力の各行からそのprefixを探す。`connect`の行はBLE link
 objectが出す完全な文で、UIは文字列全体への`contains`一致で判定する。
 
@@ -82,7 +82,7 @@ objectが出す完全な文で、UIは文字列全体への`contains`一致で�
 |---|---|
 | `connect` | 成功時`Connected; RX value_handle bound` |
 | `face_toggle` | `face:smile` / `face:joy` |
-| `led_toggle` | `led:on:<color>` / `led:off` |
+| `led_show` | `led:done` |
 | `head_sweep` | `head:done` |
 
 `connect`はスキャンの間（10秒）、`head_sweep`は約1.8秒、VMスレッドをブロック

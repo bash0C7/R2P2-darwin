@@ -6,38 +6,42 @@ import SwiftUI
 // app.rb echoes every BLE frame it writes, so the captured output of a call is
 // not just the status line. Each handler scans the output's LINES for its own
 // prefix (face: / led: / head:) rather than matching the whole string.
+//
+// Every button is labelled with the action its tap performs. Current state —
+// connected or not, which face is showing, whether the LED show is running —
+// lives in the status line at the bottom, never on a button.
 struct ContentView: View {
     @State private var status: String = "Starting VM…"
     @State private var connected: Bool = false
     @State private var connectFailed: Bool = false
     @State private var busy: Bool = false
-    @State private var faceState: String = "smile"
-    @State private var ledColor: String? = nil
+    @State private var showingLED: Bool = false
     @State private var sweeping: Bool = false
 
     var body: some View {
         List {
             Button(action: connect) {
                 HStack {
-                    Circle().fill(statusColor).frame(width: 14, height: 14)
-                    Text(connected ? "Connected" : "Connect")
+                    Text("🔗").font(.title2)
+                    Text("つなぐ")
                 }
             }
             .disabled(busy)
 
             Button(action: faceToggle) {
                 HStack {
-                    Text(faceState == "joy" ? "😆" : "😊").font(.title2)
-                    Text("Face")
+                    Text("😄").font(.title2)
+                    Text("顔をかえる")
                 }
             }
 
-            Button(action: ledToggle) {
+            Button(action: ledShow) {
                 HStack {
-                    Circle().fill(ledSwatch).frame(width: 14, height: 14)
-                    Text(ledColor == nil ? "LED off" : "LED \(ledColor!)")
+                    Text("💡").font(.title2)
+                    Text("LEDを光らせる")
                 }
             }
+            .disabled(showingLED)
 
             Button(action: headSweep) {
                 HStack {
@@ -54,28 +58,6 @@ struct ContentView: View {
         .onAppear { boot() }
     }
 
-    // MARK: - derived appearance
-
-    private var statusColor: Color {
-        if connected { return .green }
-        if connectFailed && !busy { return .red }
-        return .gray
-    }
-
-    private var ledSwatch: Color {
-        // Must carry every entry in app.rb's Stackchan::LED_RANDOM_COLORS.
-        // `nil` (LED off) stays gray; white means a colour is missing here.
-        switch ledColor {
-        case nil:       return .gray
-        case "red":     return .red
-        case "green":   return .green
-        case "blue":    return .blue
-        case "yellow":  return .yellow
-        case "cyan":    return .cyan
-        case "magenta": return Color(red: 1, green: 0, blue: 1)
-        default:        return .white
-        }
-    }
 
     // MARK: - VM plumbing
 
@@ -118,7 +100,6 @@ struct ContentView: View {
     private func faceToggle() {
         VMExecutor.shared.call("face_toggle", "") { result in
             if let face = self.statusLine(result, prefix: "face:") {
-                self.faceState = face
                 self.status = "face \(face)"
             } else {
                 self.status = "face: no reply"
@@ -126,20 +107,15 @@ struct ContentView: View {
         }
     }
 
-    private func ledToggle() {
-        VMExecutor.shared.call("led_toggle", "") { result in
-            guard let led = self.statusLine(result, prefix: "led:") else {
-                self.status = "led: no reply"
-                return
-            }
-            if led == "off" {
-                self.ledColor = nil
-                self.status = "led off"
-            } else if led.hasPrefix("on:") {
-                let color = String(led.dropFirst("on:".count))
-                self.ledColor = color
-                self.status = "led \(color)"
-            }
+    // led_show cycles six colours at LED_STEP_MS and then switches the LED off
+    // itself, blocking the VM thread for about 3 s: single-flight like headSweep.
+    private func ledShow() {
+        showingLED = true
+        status = "led…"
+        VMExecutor.shared.call("led_show", "") { result in
+            self.status = self.statusLine(result, prefix: "led:") != nil
+                ? "led done" : "led: no reply"
+            self.showingLED = false
         }
     }
 

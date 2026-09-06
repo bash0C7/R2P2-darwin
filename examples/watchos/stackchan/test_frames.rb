@@ -54,43 +54,48 @@ expect("face_toggle 3rd -> joy", last_frame, "<F:2>\n")
 $app.face_toggle
 expect("face_toggle 4th -> smile", last_frame, "<F:1>\n")
 
-# ---- led_toggle: random blink on, off ------------------------------------
+# ---- led_show: six colours in a random order, then off -------------------
 # Every acceptable "on" frame, one per random colour.
 on_frames = Stackchan::LED_RANDOM_COLORS.map do |c|
   rgb = FrameCodec::LED_COLORS[c]
   "<L:1,R:#{rgb[0]},G:#{rgb[1]},B:#{rgb[2]},S:B,M:b>\n"
 end
 
-$app.led_toggle
-expect_include("led_toggle on is a blink frame in a random colour", last_frame, on_frames)
-$app.led_toggle
-expect("led_toggle off", last_frame, "<L:1,R:0,G:0,B:0,S:B,M:o>\n")
-$app.led_toggle
-expect_include("led_toggle on again", last_frame, on_frames)
-$app.led_toggle
-expect("led_toggle off again", last_frame, "<L:1,R:0,G:0,B:0,S:B,M:o>\n")
+OFF_FRAME = "<L:1,R:0,G:0,B:0,S:B,M:o>\n"
 
-# The colour must actually vary. A `rand` that always returns 0 would pass the
-# per-frame check above; 50 on-frames must show at least two distinct colours.
-seen = {}
-50.times do
-  $app.led_toggle          # on
-  seen[last_frame] = true
-  $app.led_toggle          # off
+# One tap runs the whole show: six blink frames, one per colour, then the off
+# frame. Capture a run's frames by slicing what BleLink recorded.
+def led_show_frames
+  before = $app.ble.sent.length
+  $app.led_show
+  $app.ble.sent[before..-1]
 end
-if seen.keys.length >= 2
-  puts "PASS led_toggle colour varies: #{seen.keys.length} distinct frames over 50 toggles"
-else
-  $failures += 1
-  puts "FAIL led_toggle colour varies: only #{seen.keys.length} distinct frame(s) over 50 toggles"
-end
-# Every frame seen must still be a legal on-frame.
-illegal = seen.keys - on_frames
+
+run = led_show_frames
+expect("led_show emits 6 colours + off", run.length, 7)
+expect("led_show ends by switching the LED off", run[-1], OFF_FRAME)
+
+# Each of the six is a legal blink frame, and every colour appears exactly once —
+# that is what "cycles through all six" means, and a `rand` that repeats a colour
+# would fail here even though each individual frame is legal.
+illegal = run[0, 6] - on_frames
 if illegal.empty?
-  puts "PASS led_toggle sampled frames are all legal on-frames: #{seen.keys.length} checked"
+  puts "PASS led_show blink frames are all legal: 6 checked"
 else
   $failures += 1
-  puts "FAIL led_toggle sampled frames include illegal on-frame(s): #{illegal.inspect}"
+  puts "FAIL led_show blink frames include illegal frame(s): #{illegal.inspect}"
+end
+expect("led_show uses each colour exactly once", run[0, 6].uniq.length, 6)
+
+# The order must actually be randomised. Comparing just two runs would flag a
+# 1-in-720 coincidence as a failure, so take several and require that they are
+# not all identical.
+orders = 5.times.map { led_show_frames[0, 6] }
+if orders.uniq.length >= 2
+  puts "PASS led_show order varies: #{orders.uniq.length} distinct orders over 5 runs"
+else
+  $failures += 1
+  puts "FAIL led_show order never varied over 5 runs: #{orders.first.inspect}"
 end
 
 # ---- head_sweep: left -> right -> up -> neutral --------------------------
@@ -142,7 +147,7 @@ expect("parse_ack error", FrameCodec.parse_ack("?"), :error)
     puts "PASS FrameCodec.#{gone} absent"
   end
 end
-%w[face led head torque subtitle speak_audio].each do |gone|
+%w[face led head torque subtitle speak_audio led_toggle].each do |gone|
   if $app.respond_to?(gone)
     $failures += 1
     puts "FAIL Stackchan##{gone} should not exist in the watch subset"

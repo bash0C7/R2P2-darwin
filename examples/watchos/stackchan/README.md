@@ -8,7 +8,8 @@ with four interactive rows:
 - **Connect** — scans for the robot over BLE and binds its write characteristic,
   blocking for up to 10 seconds; tap this first
 - **Face** — toggles between two happy faces, `smile` and `joy`
-- **LED** — toggles a blink in a randomly chosen colour, and off again
+- **LED** — blinks through all six colours in a random order, about three
+  seconds in all, then switches the LED off by itself
 - **ぐるっと (sweep)** — one tap sends left → right → up → neutral
 
 Speak (subtitle + mu-law audio), torque, and touch events are out of scope here;
@@ -78,7 +79,7 @@ will silently link the wrong-arch archive. Check with
 ## How the UI reads the VM
 
 `app.rb` echoes every BLE frame it writes, so the captured output of a `vm_call`
-is more than one line. `face_toggle` / `led_toggle` / `head_sweep` each print a
+is more than one line. `face_toggle` / `led_show` / `head_sweep` each print a
 prefixed status line, which the SwiftUI layer finds by scanning the output's
 lines for that prefix; `connect`'s line instead comes from the BLE link object
 as a full sentence, matched with a whole-string `contains` check:
@@ -87,7 +88,7 @@ as a full sentence, matched with a whole-string `contains` check:
 |---|---|
 | `connect` | `Connected; RX value_handle bound` on success |
 | `face_toggle` | `face:smile` / `face:joy` |
-| `led_toggle` | `led:on:<color>` / `led:off` |
+| `led_show` | `led:done` |
 | `head_sweep` | `head:done` |
 
 `connect` blocks the VM thread for the scan (10 s) and `head_sweep` for about

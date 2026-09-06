@@ -319,8 +319,8 @@ end
 # write, so the status line is NOT the only line in the output — the UI matches
 # on the prefix, not on the whole string.
 class Stackchan
-  # Colours led_toggle picks from. "white" and "off" are excluded: neither reads
-  # as "the LED lit up in a random colour".
+  # Colours led_show cycles through. "white" and "off" are excluded: neither
+  # reads as "the LED lit up in a random colour".
   LED_RANDOM_COLORS = ["red", "green", "blue", "yellow", "cyan", "magenta"]
 
   # The two happy faces the watch cycles between.
@@ -335,12 +335,14 @@ class Stackchan
   SWEEP_PACE_MS         = 600
   SWEEP_NEUTRAL_MS      = 400
 
+  # led_show's pacing: one blink step per colour, six steps ~= 3 s of show.
+  LED_STEP_MS = 500
+
   attr_reader :ble
 
   def initialize(ble = nil)
     @ble = ble || (BLE_AVAILABLE ? RealBleLink.new : BleLink.new)
     @face_state = FACE_A
-    @led_on = false
   end
 
   # Scan/connect/discover/bind the Stack-chan's NUS RX. arg is ignored (vm_call
@@ -375,18 +377,18 @@ class Stackchan
     nil
   end
 
-  # Toggle the LED. On: pick a random colour and blink both sides. Off: send the
-  # off frame. Prints "led:on:<color>" or "led:off".
-  def led_toggle(arg = nil)
-    @led_on = !@led_on
-    if @led_on
-      color = LED_RANDOM_COLORS[rand(LED_RANDOM_COLORS.length)]
+  # Blink through all six LED_RANDOM_COLORS, in a random order, then turn the
+  # LED off. Blocks the VM thread for roughly LED_STEP_MS * 6 by design; the UI
+  # keeps this single-flight. Prints "led:done".
+  def led_show(arg = nil)
+    remaining = LED_RANDOM_COLORS.dup
+    until remaining.empty?
+      color = remaining.delete_at(rand(remaining.length))
       @ble.write(FrameCodec.encode_led(color: color, side: "both", mode: "blink"))
-      print "led:on:#{color}\n"
-    else
-      @ble.write(FrameCodec.encode_led(color: "off", side: "both", mode: "off"))
-      print "led:off\n"
+      msleep(LED_STEP_MS)
     end
+    @ble.write(FrameCodec.encode_led(color: "off", side: "both", mode: "off"))
+    print "led:done\n"
     nil
   end
 
