@@ -2086,7 +2086,34 @@ CONFIG_RB = File.join(__dir__, "r2p2-picoruby-watchos-device.rb")
 CONFIG_RB = File.join(__dir__, CONFIG_BASENAME)
 ```
 
-**残りは一切変えない。** cc.definesをconfigファイルから読み取る仕組みと `watchos_min` のparseは、再コンパイルするobjectがdefineでdriftしないための単一ソース。崩すとサイレントなオンデバイス破壊になる。
+さらに、**archiveの書き出し先も引数に追随させる。** ここを直し忘れると、stackchan向けに起動したのに
+led-toggleのlibmruby.aを上書きし、かつstackchan側には再コンパイル前のarm64 archiveが残る
+（そのままVendorへstageされ、watchアプリが誤ったarchのlibを掴む）。
+
+変更前:
+```ruby
+lib_out = File.join(ROOT, "build", "watchos-device", "lib", "libmruby.a")
+```
+
+変更後:
+```ruby
+lib_out = File.join(BUILD_DIR, "lib", "libmruby.a")
+```
+
+`BUILD_DIR` は既に `File.join(ROOT, "build", BUILD_NAME)` なので、これで両方の呼び出し元に対して
+正しくなり、led-toggle既定の挙動はbyte単位で変わらない。
+
+**上記4箇所（`BUILD_DIR` / `CONFIG_RB` / `INCLUDES` / `lib_out`）以外は一切変えない。**
+cc.definesをconfigファイルから読み取る仕組みと `watchos_min` のparseは、再コンパイルするobjectが
+defineでdriftしないための単一ソース。崩すとサイレントなオンデバイス破壊になる。
+
+引数化が漏れなく効いていることは、`watchos-device` の文字列が残っていないことで確認する。
+
+```bash
+grep -n '"watchos-device"' build_config/recompile_arm64_32.rb
+```
+
+Expected: 18行目の `ARGV[0] || "watchos-device"`（デフォルト値）ただ1件。他に出たらそこが直し漏れ。
 
 `INCLUDES` の配列にはビルド固有のパス `build/watchos-device/include` が入っているので、そこも引数に追随させる。
 
