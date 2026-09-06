@@ -518,6 +518,21 @@ namespace :watchos do
     task :gen do
       sh "cd #{ws_dir.shellescape} && xcodegen generate"
     end
+
+    desc "Build the Watch Stack-chan app for the watchOS Simulator"
+    task :build do
+      sim_build(ws_proj, "WatchStackchan", ws_derived,
+                platform: "watchOS Simulator", exclude_x86_64: false)
+    end
+
+    desc "Boot a watchOS simulator, install, and launch the Watch Stack-chan app"
+    task :run do
+      app = built_app(ws_derived, "*-watchsimulator", "WatchStackchan", "watchos:stackchan:build")
+      sim_install_launch("Apple Watch", app, ws_bundle)
+    end
+
+    desc "Full Watch Stack-chan pipeline: lib -> gen -> build -> run"
+    task all: [:lib, :gen, :build, :run]
   end
 end
 
