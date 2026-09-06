@@ -139,6 +139,7 @@ rake clobber   # clean + remove vendor/picoruby
 | `PICORUBY_REF` | `port-darwin` | ref to fetch — see [Vendor source](#vendor-source) |
 | `IOS_MIN` | `17.0` | iOS version-min for the cross-built `libmruby.a` (the example apps themselves target iOS 26 for Liquid Glass) |
 | `SIM_NAME` | `iPhone 16e` | Simulator model `ios:*:run` boots (falls back to the first available iPhone) |
+| `DEVICE_NAME` | unset | substring pinning which paired device the `device:` tasks target; needed when several are paired and none reports "connected" |
 | `WATCHOS_MIN` | `11.0` | watchOS deployment target minimum |
 | `PICORUBY_BLE_GEMDIR` | vendor's `picoruby-ble` | alternate picoruby-ble checkout for the BLE examples |
 | `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | build config for the `macos:` host tasks |

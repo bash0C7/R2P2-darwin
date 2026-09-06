@@ -101,9 +101,23 @@ def devicectl_connected_names
   `xcrun devicectl list devices`.lines.grep(/\bconnected\b/).map { |l| l.split(/\s{2,}/).first.to_s.strip }
 end
 
+# DEVICE_NAME pins which paired device the device: tasks target, matched as a
+# substring of the name devicectl and xcodebuild print. Needed whenever more
+# than one device of a platform is paired and none of them reports "connected":
+# the fallbacks below then choose by list order, which is arbitrary and readily
+# lands on a device that is locked, absent, or simply the wrong one.
+def device_name_filter(rows)
+  want = ENV["DEVICE_NAME"]
+  return rows if want.nil? || want.empty?
+  picked = rows.select { |row| row.include?(want) }
+  raise "DEVICE_NAME=#{want.inspect} matches none of:\n#{rows.join}" if picked.empty?
+  picked
+end
+
 def connected_destination(proj, scheme, platform)
   lines = `xcodebuild -project #{proj.shellescape} -scheme #{scheme} -showdestinations 2>/dev/null`.lines
           .grep(/platform:#{platform},/).reject { |l| l =~ /Simulator|placeholder/ }
+  lines = device_name_filter(lines)
   connected = devicectl_connected_names
   line = lines.find { |l| connected.any? { |n| l.include?("name:#{n}") } } ||
          lines.find { |l| l !~ /error:/ } || lines.first
@@ -193,7 +207,9 @@ end
 # (e.g. another of the user's devices that is paired but not present) so a
 # stale pairing never shadows the device actually connected right now.
 def devicectl_udid(pattern, label)
-  rows = `xcrun devicectl list devices`.lines.grep(pattern).reject { |l| l =~ /\bunavailable\b/ }
+  rows = device_name_filter(
+    `xcrun devicectl list devices`.lines.grep(pattern).reject { |l| l =~ /\bunavailable\b/ }
+  )
   dev = (rows.find { |l| l =~ /\bconnected\b/ } || rows.first)
         &.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
   raise "no connected #{label} (xcrun devicectl list devices)" unless dev

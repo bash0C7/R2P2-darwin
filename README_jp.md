@@ -138,6 +138,7 @@ rake clobber   # clean に加えて vendor/picoruby も削除
 | `PICORUBY_REF` | `port-darwin` | 取得するref — [vendorの取得元](#vendorの取得元)を参照 |
 | `IOS_MIN` | `17.0` | クロスビルドする`libmruby.a`のiOS version-min（exampleアプリ自体はLiquid GlassのためiOS 26をtarget） |
 | `SIM_NAME` | `iPhone 16e` | `ios:*:run`が起動するSimulatorの機種（無ければ先頭のiPhoneにフォールバック） |
+| `DEVICE_NAME` | 未設定 | `device:`タスクが対象とする実機を名前の部分一致で固定する。複数台がpairedで、どれも"connected"を報告しないときに必要 |
 | `WATCHOS_MIN` | `11.0` | watchOSのdeployment target下限 |
 | `PICORUBY_BLE_GEMDIR` | vendorの`picoruby-ble` | BLE exampleが使うpicoruby-bleの別チェックアウト |
 | `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | `macos:`ホストタスクのビルド設定 |
