@@ -9,6 +9,8 @@
 /HANDOFF.md
 # isolated worktrees (harness-managed)
 /.claude/worktrees/
+# subagent-driven-development scratch (ledger, briefs, review packages)
+/.superpowers/
 # macos:single staging
 /tmp/
 # Claude Code local-only settings (permission grants etc.)
