@@ -85,8 +85,12 @@ else
   puts "FAIL led_toggle colour varies: only #{seen.keys.length} distinct frame(s) over 50 toggles"
 end
 # Every frame seen must still be a legal on-frame.
-seen.keys.each_with_index do |f, i|
-  expect_include("led_toggle sampled frame #{i}", f, on_frames)
+illegal = seen.keys - on_frames
+if illegal.empty?
+  puts "PASS led_toggle sampled frames are all legal on-frames: #{seen.keys.length} checked"
+else
+  $failures += 1
+  puts "FAIL led_toggle sampled frames include illegal on-frame(s): #{illegal.inspect}"
 end
 
 # ---- head_sweep: left -> right -> up -> neutral --------------------------

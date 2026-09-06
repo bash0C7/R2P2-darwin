@@ -78,8 +78,10 @@ will silently link the wrong-arch archive. Check with
 ## How the UI reads the VM
 
 `app.rb` echoes every BLE frame it writes, so the captured output of a `vm_call`
-is more than one line. Each dispatcher method also prints a prefixed status line,
-and the SwiftUI layer scans the output's lines for that prefix:
+is more than one line. `face_toggle` / `led_toggle` / `head_sweep` each print a
+prefixed status line, which the SwiftUI layer finds by scanning the output's
+lines for that prefix; `connect`'s line instead comes from the BLE link object
+as a full sentence, matched with a whole-string `contains` check:
 
 | call | status line |
 |---|---|

@@ -63,14 +63,17 @@ struct ContentView: View {
     }
 
     private var ledSwatch: Color {
+        // Must carry every entry in app.rb's Stackchan::LED_RANDOM_COLORS.
+        // `nil` (LED off) stays gray; white means a colour is missing here.
         switch ledColor {
+        case nil:       return .gray
         case "red":     return .red
         case "green":   return .green
         case "blue":    return .blue
         case "yellow":  return .yellow
         case "cyan":    return .cyan
         case "magenta": return Color(red: 1, green: 0, blue: 1)
-        default:        return .gray
+        default:        return .white
         }
     }
 

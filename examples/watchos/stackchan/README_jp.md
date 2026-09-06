@@ -74,8 +74,9 @@ archiveがerror無しでlinkされる。実機buildの前に
 ## UIがVMの出力をどう読むか
 
 `app.rb`は書き込んだBLEフレームを毎回echoするので、`vm_call`のcaptured output
-は1行ではない。各dispatcherメソッドはprefix付きの状態行も出し、SwiftUI層は
-出力の各行からそのprefixを探す。
+は1行ではない。`face_toggle` / `led_toggle` / `head_sweep`はそれぞれprefix付きの
+状態行を出し、SwiftUI層は出力の各行からそのprefixを探す。`connect`の行はBLE link
+objectが出す完全な文で、UIは文字列全体への`contains`一致で判定する。
 
 | call | 状態行 |
 |---|---|
