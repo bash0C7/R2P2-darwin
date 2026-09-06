@@ -39,8 +39,12 @@ jobs:
             build/ios-repl-sim
           key: build-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**') }}
 
-      - name: Bridge smoke test (host build)
-        run: rake smoke
+      # Host-only: the bridge smoke test plus every example's standalone
+      # test_*.rb. Seconds of runtime, so it belongs on every PR. The full
+      # per-example device+Simulator sweep is .github/workflows/regression.yml,
+      # which is far too slow to gate a PR and runs on a schedule instead.
+      - name: Unit tests + bridge smoke test (host build)
+        run: rake regress:unit
 
       # ios:build declares no dependency on ios:gen, so run the three
       # pipeline steps explicitly in order. Device/signing tasks can't run

@@ -228,13 +228,14 @@ BLE設定でビルドしたバイナリは、`./build/host/bin/picoruby`を直�
 
 ## ビルドの検証
 
-安いものから順に4つあります。
+安いものから順に並べます。
 
 **`rake smoke`**は`build_config/r2p2-picoruby-host.rb`でpicorubyをホスト
 ビルドし（全iOS設定が出発点とする共通のgem集合とport chainを同じく持ちます）、
 `bridge/smoke_test.c`をリンクして実行します。ブリッジと
-`ports/darwin/machine.c`に対する高速なgateであり、CIが毎pushで回しているのも
-これです。
+`ports/darwin/machine.c`に対する高速なgateです。**`rake regress:unit`**はこれと
+各exampleの単体テスト`test_*.rb`をまとめたもので、CIが毎push・毎pull requestで
+回しているのはこちらです。
 
 **`rake ios:<name>:device:check`**はdevice用アプリを署名なしでリンクし、
 Simulatorビルドやホストビルドでは通ってしまうdevice SDK禁止事項を捕まえます。
@@ -262,6 +263,16 @@ SimulatorはUDID（`SIM_UDID`。既定値はRakefile内のiPhone 16e）で固定
 `libmruby.a`をクリーンビルドで2回作り、アーカイブから展開したメンバのハッシュを
 比較します（コードに関係なく毎回変わる`ar`ヘッダのタイムスタンプは無視）。
 ハッシュが一致すれば、同じ入力が本当に同じオブジェクトを産んだということです。
+
+**`rake regress`**が全体の横断確認です。`regress:unit`、全exampleのdevice向け
+無署名リンク、全exampleのSimulatorビルド、macOSホストビルドの順に回します。各stepを
+別プロセスで実行し、失敗しても止まらず最後にまとめて報告します。step単位のlogは
+`build/regress/`に残ります。device passをSimulator passより先に置いてあるのは意図的で、
+両者が同じ`Vendor/lib/libmruby.a`へ書き込むため、最後に走るSimulator passが
+`rake <example>:run`の期待するarchを各exampleに残します。1 exampleだけなら
+`EXAMPLE=ios:torch rake regress:one`です。`.github/workflows/regression.yml`は同じ
+taskをexampleごとに並列で回します（週次 + 手動）。matrixは`rake regress:examples`から
+組み立てるので、Rakefileにexampleを足せばworkflowを触らずCIにも載ります。
 
 ## 全体の組み立て
 
@@ -336,8 +347,9 @@ upstreamの`picoruby/picoruby` masterにはこれらのportがありません。
 
 ```
 R2P2-darwin/
-  Rakefile               check / setup / refresh / smoke / ios:<example>:* /
-                         watchos:<example>:* / determinism:* / clean / clobber
+  Rakefile               check / setup / refresh / smoke / regress:* /
+                         ios:<example>:* / watchos:<example>:* / determinism:* /
+                         clean / clobber
   rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
   build_config/
     r2p2-picoruby-ios-<example>-{sim,device}.rb     example ごとの iOS クロスビルド
