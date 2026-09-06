@@ -37,7 +37,12 @@ targets:
           - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/mruby-compiler/lib/prism/include"
           - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include"
           - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/include"
+          # Both build dirs: mruby generates mruby/presym/id.h into the build
+          # dir of whichever config produced the archive being linked, so a
+          # device build that only knows the Simulator dir compiles solely
+          # because a Simulator build happened to run first on that machine.
           - "$(SRCROOT)/../../../build/ios-repl-sim/include"
+          - "$(SRCROOT)/../../../build/ios-repl-device/include"
           - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
           - "$(SRCROOT)/../../../bridge"
         LIBRARY_SEARCH_PATHS:
