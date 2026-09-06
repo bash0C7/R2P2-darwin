@@ -347,7 +347,7 @@ R2P2-darwin/
   rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
   build_config/
     r2p2-picoruby-ios-<example>-{sim,device}.rb    per-example iOS cross-builds
-    r2p2-picoruby-watchos-{sim,device}.rb          watchOS cross-builds
+    r2p2-picoruby-watchos-<example>-{sim,device}.rb watchOS cross-builds
     recompile_arm64_32.rb                          arm64_32 re-archive for the watch
     r2p2-picoruby-darwin{,-ble,-single}.rb         macOS host builds
     r2p2-picoruby-host.rb                          host build behind `rake smoke`

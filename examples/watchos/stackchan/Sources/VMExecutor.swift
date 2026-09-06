@@ -119,7 +119,9 @@ final class VMThread: Thread {
         NSLog("[WatchStackchan] VM opened")
         DispatchQueue.main.async { self.onReady("VM ready") }
         executor?.startTick()
-        // Keep the thread alive so workQueue's work actually runs on it.
+        // Keep the thread alive: it owns the VM's memory and holds workQueue,
+        // so it must outlive main() instead of exiting at the end of this
+        // method.
         RunLoop.current.run()
     }
 }
