@@ -500,6 +500,20 @@ namespace :watchos do
       task all: [:lib, "watchos:led:gen", :build, :run]
     end
   end
+
+  namespace :stackchan do
+    ws_dir            = File.join(ROOT, "examples", "watchos", "stackchan")
+    ws_proj           = File.join(ws_dir, "WatchStackchan.xcodeproj")
+    ws_bundle         = "com.bash0c7.picoruby.WatchStackchan"
+    ws_vendor         = File.join(ws_dir, "Vendor")
+    ws_derived        = File.join(ROOT, "build", "watchos-stackchan-app")
+    ws_device_derived = File.join(ROOT, "build", "watchos-stackchan-app-device")
+
+    desc "Cross-build libmruby.a for watchOS Simulator (BLE) and stage under examples/watchos/stackchan/Vendor (env: WATCHOS_MIN)"
+    task lib: :setup do
+      stage_libmruby("r2p2-picoruby-watchos-stackchan-sim.rb", "watchos-stackchan-sim", ws_vendor)
+    end
+  end
 end
 
 desc "Build and launch the repl example on the iOS Simulator (same as ios:repl:all)"
