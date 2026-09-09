@@ -101,6 +101,13 @@ def devicectl_connected_names
   `xcrun devicectl list devices`.lines.grep(/\bconnected\b/).map { |l| l.split(/\s{2,}/).first.to_s.strip }
 end
 
+# Apple names a device "<owner>\u00A0Apple\u00A0Watch", with NO-BREAK SPACE between the
+# words. A DEVICE_NAME typed with the ordinary space that looks identical then
+# matches nothing, so both sides are flattened before comparison.
+def device_name_normalize(str)
+  str.tr("\u00A0", " ")
+end
+
 # DEVICE_NAME pins which paired device the device: tasks target, matched as a
 # substring of the name devicectl and xcodebuild print. Needed whenever more
 # than one device of a platform is paired and none of them reports "connected":
@@ -109,7 +116,8 @@ end
 def device_name_filter(rows)
   want = ENV["DEVICE_NAME"]
   return rows if want.nil? || want.empty?
-  picked = rows.select { |row| row.include?(want) }
+  needle = device_name_normalize(want)
+  picked = rows.select { |row| device_name_normalize(row).include?(needle) }
   raise "DEVICE_NAME=#{want.inspect} matches none of:\n#{rows.join}" if picked.empty?
   picked
 end
