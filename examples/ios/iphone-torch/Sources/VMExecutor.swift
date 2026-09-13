@@ -1,45 +1,36 @@
 import Foundation
 
-// Owns the persistent PicoRuby VM. mruby is single-threaded, so vm_open /
-// vm_call / vm_close MUST all run on ONE thread. This serial DispatchQueue is
-// that thread; the SwiftUI layer only posts onto it. app.rb defines $app =
-// TorchApp.new at boot; each button posts a `call("on"/"off")` which runs
-// vm_call on the VM thread and returns app.rb's printed log line.
+// Owns the PicoRuby VM. mruby is single-threaded, so the VM lives on this one
+// serial DispatchQueue. app.rb is a plain top-level script (`loop do ... end`),
+// so vm_open runs it to completion on that thread — until Stop.
+//
+// Stop never touches the VM from another thread: it only raises the gem's stop
+// flag (TORCH_request_stop). The script's next `sleep` sees it, turns the torch
+// off, and ends the loop with StopIteration; vm_open then returns here and the
+// VM is closed on its own thread. Run again opens a fresh VM.
 final class VMExecutor {
     static let shared = VMExecutor()
 
     private let queue = DispatchQueue(label: "com.bash0c7.torch.vm")
-    private var vm: UnsafeMutableRawPointer?
-    private var onLog: ((String) -> Void)?
+    private var running = false
 
     private init() {}
 
-    func start(bootSource: String, onLog: @escaping (String) -> Void) {
-        self.onLog = onLog
+    func start(source: String, onFinished: @escaping () -> Void) {
+        guard !running else { return }
+        running = true
         queue.async {
-            guard let handle = bootSource.withCString({ vm_open($0) }) else {
-                NSLog("[Torch] vm_open returned NULL (app.rb failed to load)")
-                DispatchQueue.main.async { onLog("(VM failed to start — app.rb did not load)") }
-                return
-            }
-            self.vm = handle
-            NSLog("[Torch] VM opened")
-            // app.rb's readiness line printed during boot is not captured by
-            // vm_open; the UI shows its own "VM ready" text. Button presses log.
+            TORCH_clear_stop()
+            NSLog("[Torch] VM starting: running app.rb")
+            let handle = source.withCString { vm_open($0) }
+            NSLog("[Torch] app.rb finished (vm_open returned %@)", handle == nil ? "NULL" : "handle")
+            if let handle = handle { vm_close(handle) }
+            self.running = false
+            DispatchQueue.main.async { onFinished() }
         }
     }
 
-    // Invoke `method` ("on"/"off") on $app, returning app.rb's captured stdout.
-    func call(_ method: String) {
-        queue.async {
-            guard let vm = self.vm else { return }
-            let out = method.withCString { m in "".withCString { a in vm_call(vm, m, a) } }
-            let text = out.map { String(cString: $0) } ?? ""
-            if let out = out { free(out) }
-            if !text.isEmpty {
-                NSLog("[Torch] %@", text)
-                DispatchQueue.main.async { self.onLog?(text) }
-            }
-        }
+    func stop() {
+        TORCH_request_stop()
     }
 }

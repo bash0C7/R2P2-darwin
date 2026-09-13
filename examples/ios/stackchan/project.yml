@@ -2,7 +2,7 @@ name: Stackchan
 options:
   bundleIdPrefix: com.bash0c7.picoruby
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "26.0"   # Liquid Glass (SwiftUI .glass / .glassProminent, glassEffect) — no availability shims
 packages:
   # The Darwin (CoreBluetooth) BLE backend Swift package. Its pble_* C symbols
   # resolve the undefined references in the staged libmruby.a at app link time.
@@ -62,6 +62,7 @@ targets:
           - "-lmruby"
           - "-framework"
           - "Security"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"   # launch screen => full-screen layout (no letterbox)
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Connect to your Stack-chan robot over Bluetooth."
         INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription: "Connect to your Stack-chan robot over Bluetooth."

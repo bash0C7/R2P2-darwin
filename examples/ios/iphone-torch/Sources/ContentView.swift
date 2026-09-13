@@ -1,54 +1,49 @@
 import SwiftUI
 
-// All torch behaviour lives in app.rb (driving AVCaptureDevice via the
-// picoruby-iphone-torch Darwin port). This view boots the VM and maps the two
-// buttons to vm_call("on") / vm_call("off"). Swift holds no torch logic.
+// The whole behaviour is app.rb, shown on screen so the audience can read the
+// same code that is running. Run hands it to the PicoRuby VM
+// (VMExecutor.start -> vm_open), which compiles it in-app and runs the loop.
+// Stop raises the gem's stop flag; the loop ends at its next `sleep`.
+// Swift holds no torch logic. Controls live in the bottom toolbar (Liquid
+// Glass); the code pane is plain content underneath.
 struct ContentView: View {
-    @State private var log: String = "Starting VM…"
+    @State private var source: String = ""
+    @State private var running = false
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("iPhone Torch").font(.headline)
-            Text("Ruby (PicoRuby) drives AVCaptureDevice through the picoruby-iphone-torch Darwin port.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            HStack(spacing: 24) {
-                Button("ON")  { VMExecutor.shared.call("on") }
-                    .buttonStyle(.borderedProminent)
-                Button("OFF") { VMExecutor.shared.call("off") }
-                    .buttonStyle(.bordered)
+        NavigationStack {
+            ScrollView {
+                Text(source.isEmpty ? "(could not read bundled app.rb)" : source)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 20))
+                    .padding()
             }
-            .font(.title2)
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(log.isEmpty ? "—" : log)
-                        .font(.system(.footnote, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .id("LOGEND")
+            .navigationTitle("iPhone Torch")
+            .toolbar {
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Run") {
+                        running = true
+                        VMExecutor.shared.start(source: source) { running = false }
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(running || source.isEmpty)
                 }
-                .frame(maxHeight: .infinity)
-                .border(.gray)
-                .onChange(of: log) { _, _ in proxy.scrollTo("LOGEND", anchor: .bottom) }
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Stop") { VMExecutor.shared.stop() }
+                        .buttonStyle(.glass)
+                        .disabled(!running)
+                }
             }
         }
-        .padding()
-        .onAppear { boot() }
+        .onAppear { load() }
     }
 
-    private func boot() {
+    private func load() {
         guard let url = Bundle.main.url(forResource: "app", withExtension: "rb"),
-              let src = try? String(contentsOf: url, encoding: .utf8) else {
-            log = "(could not read bundled app.rb)"
-            return
-        }
-        log = "VM ready. Tap ON / OFF."
-        VMExecutor.shared.start(bootSource: src) { line in
-            if self.log.count > 8000 { self.log = String(self.log.suffix(6000)) }
-            self.log += (self.log.isEmpty ? "" : "\n") + line
-        }
+              let src = try? String(contentsOf: url, encoding: .utf8) else { return }
+        source = src
     }
 }

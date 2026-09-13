@@ -12,12 +12,47 @@ def mruby_env(cfg)
   { "MRUBY_BUILD_DIR" => BUILD_DIR, "MRUBY_CONFIG" => File.absolute_path(cfg) }
 end
 
+# What a build/<name>/ directory was produced from: the picoruby tree it
+# compiled and the build_config that drove it. build_config files are
+# self-contained (none require another), so the config's own digest is the whole
+# story for the config side.
+def build_stamp(config_basename)
+  cfg = File.join(ROOT, "build_config", config_basename)
+  sha = if File.directory?(File.join(PICORUBY_SRC, ".git"))
+          `git -C #{PICORUBY_SRC.shellescape} rev-parse HEAD`.strip
+        else
+          ""
+        end
+  Digest::SHA256.hexdigest("#{sha}\n#{Digest::SHA256.file(cfg).hexdigest}")
+end
+
+# mruby's compile rule rebuilds an object only when its .c is newer, so a
+# build/<name>/ left from an earlier picoruby or an earlier build_config
+# survives both untouched. `rake refresh` is the trap: a freshly fetched tree's
+# files can carry mtimes OLDER than the .o files already in build/, so every
+# object looks up to date, nothing recompiles, and the lib task reports success
+# while staging the previous picoruby's archive. The app then fails to link
+# against a symbol that moved — the error names the symbol, never the stale
+# directory. Stamp each build dir with its inputs and wipe it when they change.
+def invalidate_stale_build(config_basename, build_name)
+  want  = build_stamp(config_basename)
+  dir   = File.join(BUILD_DIR, build_name)
+  stamp = File.join(dir, ".r2p2-build-stamp")
+  if File.directory?(dir) && (!File.file?(stamp) || File.read(stamp).strip != want)
+    puts "build/#{build_name}: picoruby or build_config changed since it was built — rebuilding from scratch"
+    rm_rf dir
+  end
+  want
+end
+
 # Cross-build libmruby.a with the given build_config and stage the archive +
 # picoruby headers under <vendor_dir>. `build_name` is the MRuby build name (the
 # build/<name>/ output dir). Shared by each example's lib task.
 def stage_libmruby(config_basename, build_name, vendor_dir)
+  stamp = invalidate_stale_build(config_basename, build_name)
   cfg = File.join(ROOT, "build_config", config_basename)
   sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
+  File.write(File.join(BUILD_DIR, build_name, ".r2p2-build-stamp"), stamp)
   lib = File.join(BUILD_DIR, build_name, "lib", "libmruby.a")
   raise "expected #{lib} not found" unless File.file?(lib)
   rm_rf vendor_dir
@@ -59,10 +94,34 @@ end
 # Destination id of the SPECIFIC connected device (not generic/platform=...) so
 # -allowProvisioningUpdates + -allowProvisioningDeviceRegistration can register
 # it with the team and generate a profile. `platform` is "iOS" or "watchOS".
+# Names of the devices devicectl reports as "connected" right now. A paired
+# but absent device is "available (paired)", and a stale one "unavailable";
+# neither can take an install, so both helpers below prefer this set.
+def devicectl_connected_names
+  `xcrun devicectl list devices`.lines.grep(/\bconnected\b/).map { |l| l.split(/\s{2,}/).first.to_s.strip }
+end
+
+# DEVICE_NAME pins which paired device the device: tasks target, matched as a
+# substring of the name devicectl and xcodebuild print. Needed whenever more
+# than one device of a platform is paired and none of them reports "connected":
+# the fallbacks below then choose by list order, which is arbitrary and readily
+# lands on a device that is locked, absent, or simply the wrong one.
+def device_name_filter(rows)
+  want = ENV["DEVICE_NAME"]
+  return rows if want.nil? || want.empty?
+  picked = rows.select { |row| row.include?(want) }
+  raise "DEVICE_NAME=#{want.inspect} matches none of:\n#{rows.join}" if picked.empty?
+  picked
+end
+
 def connected_destination(proj, scheme, platform)
-  dest = `xcodebuild -project #{proj.shellescape} -scheme #{scheme} -showdestinations 2>/dev/null`.lines
-         .grep(/platform:#{platform},/).reject { |l| l =~ /Simulator|placeholder/ }
-         .first&.match(/id:(\S+)/)&.captures&.first
+  lines = `xcodebuild -project #{proj.shellescape} -scheme #{scheme} -showdestinations 2>/dev/null`.lines
+          .grep(/platform:#{platform},/).reject { |l| l =~ /Simulator|placeholder/ }
+  lines = device_name_filter(lines)
+  connected = devicectl_connected_names
+  line = lines.find { |l| connected.any? { |n| l.include?("name:#{n}") } } ||
+         lines.find { |l| l !~ /error:/ } || lines.first
+  dest = line&.match(/id:(\S+?),?\s/)&.captures&.first
   raise "no connected #{platform} device destination (xcodebuild -showdestinations)" unless dest
   dest
 end
@@ -114,11 +173,21 @@ def built_app(derived, products_glob, app_name, build_task)
   app
 end
 
-# UDID of the first available simulator whose name matches `device_label`
-# ("iPhone" or "Apple Watch").
+# UDID of an available simulator for `device_label` ("iPhone" or "Apple
+# Watch"). iPhone prefers the model named by SIM_NAME (default "iPhone 16e",
+# the phone the examples are exercised on, so the Simulator matches the real
+# screen) and falls back to the first available iPhone with a warning.
+SIM_NAME = ENV["SIM_NAME"] || "iPhone 16e"
+
 def first_available_sim(device_label)
-  udid = `xcrun simctl list devices available`.lines
-         .grep(/#{device_label}/).first&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first
+  lines = `xcrun simctl list devices available`.lines.grep(/#{device_label}/)
+  pick  = ->(l) { l&.match(/\(([0-9A-F-]{36})\)/)&.captures&.first }
+  if device_label == "iPhone"
+    udid = pick.(lines.find { |l| l.strip.start_with?("#{SIM_NAME} (") })
+    return udid if udid
+    warn "no #{SIM_NAME.inspect} simulator; using the first available iPhone (set SIM_NAME to pin one)"
+  end
+  udid = pick.(lines.first)
   raise "no available #{device_label} simulator" unless udid
   udid
 end
@@ -138,8 +207,10 @@ end
 # (e.g. another of the user's devices that is paired but not present) so a
 # stale pairing never shadows the device actually connected right now.
 def devicectl_udid(pattern, label)
-  dev = `xcrun devicectl list devices`.lines
-        .grep(pattern).reject { |l| l =~ /\bunavailable\b/ }.first
+  rows = device_name_filter(
+    `xcrun devicectl list devices`.lines.grep(pattern).reject { |l| l =~ /\bunavailable\b/ }
+  )
+  dev = (rows.find { |l| l =~ /\bconnected\b/ } || rows.first)
         &.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
   raise "no connected #{label} (xcrun devicectl list devices)" unless dev
   dev
@@ -154,7 +225,7 @@ end
 
 # Simulator kept booted and never recreated/erased, so its DiagnosticReports
 # history and epoch stay stable across observe runs (env SIM_UDID overrides).
-FROZEN_SIM_UDID = "022CC935-D50B-4790-978F-E4CA1DD0F5DC"
+FROZEN_SIM_UDID = "A38F6094-C80A-4670-9798-C101B2F38821"   # the iPhone 16e simulator
 
 # Launch `app` on the frozen Simulator OBSERVE_N times (env, default 5) and
 # classify each run OK or CRASH. `xcrun simctl launch --console-pty` is the
@@ -370,7 +441,7 @@ IOS_EXAMPLES = [
     golden: "[VirtualPeripheral] VM opened" },
   { name: "torch",     label: "Torch",              dir: "iphone-torch",
     scheme: "Torch",             lib_phrase: "WITH picoruby-iphone-torch",
-    golden: "[Torch] VM opened" },
+    golden: "[Torch] VM starting" },
   { name: "tiltsynth", label: "TiltSynth",          dir: "tilt-synth",
     scheme: "TiltSynth",         lib_phrase: "WITH the tilt-synth gems",
     golden: "[TiltSynth] VM opened" },
@@ -452,7 +523,8 @@ namespace :watchos do
         # stage_libmruby copies the fat/arm64 archive mruby just built; the
         # physical watch needs arm64_32. Recompile in place and re-stage so
         # Vendor/lib never ends up with an arch the device can't run.
-        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape}"
+        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape} " \
+           "watchos-device r2p2-picoruby-watchos-device.rb"
         lib = File.join(BUILD_DIR, "watchos-device", "lib", "libmruby.a")
         cp lib, File.join(watch_vendor, "lib", "libmruby.a")
         puts "Re-staged arm64_32 libmruby.a under #{watch_vendor}"
@@ -478,6 +550,76 @@ namespace :watchos do
 
       desc "Full Watch device pipeline: lib -> gen -> build -> run (needs a connected, signed Apple Watch)"
       task all: [:lib, "watchos:led:gen", :build, :run]
+    end
+  end
+
+  namespace :stackchan do
+    ws_dir            = File.join(ROOT, "examples", "watchos", "stackchan")
+    ws_proj           = File.join(ws_dir, "WatchStackchan.xcodeproj")
+    ws_bundle         = "com.bash0c7.picoruby.WatchStackchan"
+    ws_vendor         = File.join(ws_dir, "Vendor")
+    ws_derived        = File.join(ROOT, "build", "watchos-stackchan-app")
+    ws_device_derived = File.join(ROOT, "build", "watchos-stackchan-app-device")
+
+    desc "Cross-build libmruby.a for watchOS Simulator (BLE) and stage under examples/watchos/stackchan/Vendor (env: WATCHOS_MIN)"
+    task lib: :setup do
+      stage_libmruby("r2p2-picoruby-watchos-stackchan-sim.rb", "watchos-stackchan-sim", ws_vendor)
+    end
+
+    desc "Generate the Watch Stack-chan Xcode project from project.yml"
+    task :gen do
+      sh "cd #{ws_dir.shellescape} && xcodegen generate"
+    end
+
+    desc "Build the Watch Stack-chan app for the watchOS Simulator"
+    task :build do
+      sim_build(ws_proj, "WatchStackchan", ws_derived,
+                platform: "watchOS Simulator", exclude_x86_64: false)
+    end
+
+    desc "Boot a watchOS simulator, install, and launch the Watch Stack-chan app"
+    task :run do
+      app = built_app(ws_derived, "*-watchsimulator", "WatchStackchan", "watchos:stackchan:build")
+      sim_install_launch("Apple Watch", app, ws_bundle)
+    end
+
+    desc "Full Watch Stack-chan pipeline: lib -> gen -> build -> run"
+    task all: [:lib, :gen, :build, :run]
+
+    namespace :device do
+      desc "Cross-build libmruby.a for watchOS device (arm64_32, BLE) and stage under examples/watchos/stackchan/Vendor (env: WATCHOS_MIN)"
+      task lib: :setup do
+        stage_libmruby("r2p2-picoruby-watchos-stackchan-device.rb", "watchos-stackchan-device", ws_vendor)
+        # stage_libmruby copies the fat/arm64 archive mruby just built; the
+        # physical watch needs arm64_32. Recompile in place and re-stage so
+        # Vendor/lib never ends up with an arch the device can't run.
+        sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape} " \
+           "watchos-stackchan-device r2p2-picoruby-watchos-stackchan-device.rb"
+        lib = File.join(BUILD_DIR, "watchos-stackchan-device", "lib", "libmruby.a")
+        cp lib, File.join(ws_vendor, "lib", "libmruby.a")
+        puts "Re-staged arm64_32 libmruby.a under #{ws_vendor}"
+      end
+
+      desc "Build the Watch Stack-chan app, signed, for the connected Apple Watch"
+      task :build do
+        device_build(ws_proj, "WatchStackchan", ws_device_derived,
+                     archs: "arm64_32", platform: "watchOS")
+      end
+
+      desc "Link the Watch Stack-chan app for a generic watchOS device without signing (no watch needed)"
+      task :check do
+        device_check_build(ws_proj, "WatchStackchan", ws_device_derived,
+                           archs: "arm64_32", platform: "watchOS")
+      end
+
+      desc "Install and launch the Watch Stack-chan app on the connected Apple Watch"
+      task :run do
+        app = built_app(ws_device_derived, "*-watchos", "WatchStackchan", "watchos:stackchan:device:build")
+        device_install_launch(/Watch/, "Apple Watch", app, ws_bundle)
+      end
+
+      desc "Full Watch Stack-chan device pipeline: lib -> gen -> build -> run (needs a connected, signed Apple Watch)"
+      task all: [:lib, "watchos:stackchan:gen", :build, :run]
     end
   end
 end
@@ -539,6 +681,101 @@ namespace :determinism do
     end
   end
 end
+
+# ---- regression sweep -------------------------------------------------------
+#
+# Every example, in one command. The iOS half is derived from IOS_EXAMPLES, so a
+# new iOS example joins the sweep by being declared there. The watchOS
+# namespaces are written out by hand in this file, so they are listed by hand
+# here too — add a watchOS example and this list is the one place to extend.
+REGRESSION_EXAMPLES = IOS_EXAMPLES.map { |e| "ios:#{e[:name]}" } +
+                      %w[watchos:led watchos:stackchan]
+
+REGRESS_LOG_DIR = File.join(BUILD_DIR, "regress")
+
+# Run each rake task in its own process, keep going past failures, and report
+# once at the end. A sweep that aborts on the first failure hides every problem
+# behind it, which is the opposite of what a regression run is for. Per-step
+# logs land under build/regress/ so a failure is diagnosable without re-running
+# the whole matrix; CI uploads that directory.
+def regress(steps)
+  mkdir_p REGRESS_LOG_DIR
+  results = steps.map do |task|
+    log = File.join(REGRESS_LOG_DIR, "#{task.tr(':', '_')}.log")
+    ok  = system("cd #{ROOT.shellescape} && rake #{task} > #{log.shellescape} 2>&1")
+    puts format("%-42s %s", task, ok ? "PASS" : "FAIL")
+    $stdout.flush
+    [task, ok, log]
+  end
+
+  failed = results.reject { |_, ok, _| ok }
+  failed.each do |task, _, log|
+    puts "\n===== #{task} FAILED — last 30 lines of #{log} ====="
+    puts File.readlines(log).last(30).join
+  end
+  puts "\n#{results.length - failed.length}/#{results.length} passed"
+  abort "regression failed: #{failed.map(&:first).join(', ')}" unless failed.empty?
+end
+
+namespace :regress do
+  desc "Host-only checks: every example's standalone unit test + the bridge smoke test (no Xcode, no Simulator)"
+  task :unit do
+    tests = Dir.glob(File.join(ROOT, "examples", "**", "test_*.rb")).sort
+    abort "no examples/**/test_*.rb found — the glob or the example layout moved" if tests.empty?
+    mkdir_p REGRESS_LOG_DIR
+    results = tests.map do |test|
+      rel = test.sub("#{ROOT}/", "")
+      log = File.join(REGRESS_LOG_DIR, "#{rel.tr('/', '_')}.log")
+      ok  = system(RbConfig.ruby, test, out: log, err: [:child, :out])
+      puts format("%-42s %s", rel, ok ? "PASS" : "FAIL")
+      [rel, ok, log]
+    end
+
+    failed = results.reject { |_, ok, _| ok }
+    failed.each { |rel, _, log| puts "\n===== #{rel} FAILED =====\n#{File.read(log)}" }
+    abort "unit tests failed: #{failed.map(&:first).join(', ')}" unless failed.empty?
+
+    # Shelled out like every other sweep step so `smoke` resolves its own
+    # host:lib dependency in a clean process.
+    regress(["smoke"])
+  end
+
+  desc "Link every example for a real device without signing (no device needed)"
+  task :device do
+    regress(REGRESSION_EXAMPLES.flat_map { |ns| ["#{ns}:device:lib", "#{ns}:gen", "#{ns}:device:check"] })
+  end
+
+  desc "Build every example for the Simulator"
+  task :sim do
+    regress(REGRESSION_EXAMPLES.flat_map { |ns| ["#{ns}:lib", "#{ns}:gen", "#{ns}:build"] })
+  end
+
+  desc "Link and build ONE example (env: EXAMPLE=ios:torch) — the unit the CI regression matrix fans out over"
+  task :one do
+    ns = ENV["EXAMPLE"].to_s
+    unless REGRESSION_EXAMPLES.include?(ns)
+      abort "EXAMPLE=#{ns.inspect} is not one of: #{REGRESSION_EXAMPLES.join(', ')}"
+    end
+    regress(["#{ns}:device:lib", "#{ns}:gen", "#{ns}:device:check",
+             "#{ns}:lib", "#{ns}:gen", "#{ns}:build"])
+  end
+
+  # Emits the example list as JSON so .github/workflows/regression.yml can build
+  # its matrix from it. Keeps IOS_EXAMPLES the single place an example is
+  # declared — a new example joins CI without anyone editing the workflow.
+  # No desc: it is plumbing, not something to run by hand.
+  task :examples do
+    require "json"
+    puts JSON.generate(REGRESSION_EXAMPLES)
+  end
+end
+
+# Order is load-bearing. Each example's device:lib and lib overwrite the SAME
+# examples/<platform>/<name>/Vendor/lib/libmruby.a, so the device sweep must
+# finish before the Simulator sweep, and the Simulator sweep must run last —
+# that leaves every Vendor holding the arch `rake <example>:run` needs.
+desc "Full regression: unit tests, then device link checks, then Simulator builds, for every example"
+task regress: ["regress:unit", "regress:device", "regress:sim", "macos:build"]
 
 desc "Compile + run the bridge smoke test on the host"
 task smoke: "host:lib" do

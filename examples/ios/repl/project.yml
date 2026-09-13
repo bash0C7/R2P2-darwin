@@ -2,7 +2,7 @@ name: PicoRubyRunner
 options:
   bundleIdPrefix: com.bash0c7.picoruby
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "26.0"   # Liquid Glass (SwiftUI .glass / .glassProminent, glassEffect) — no availability shims
 targets:
   PicoRubyRunner:
     type: application
@@ -37,15 +37,21 @@ targets:
           - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/mruby-compiler/lib/prism/include"
           - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include"
           - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/include"
+          # Both build dirs: mruby generates mruby/presym/id.h into the build
+          # dir of whichever config produced the archive being linked, so a
+          # device build that only knows the Simulator dir compiles solely
+          # because a Simulator build happened to run first on that machine.
           - "$(SRCROOT)/../../../build/ios-repl-sim/include"
+          - "$(SRCROOT)/../../../build/ios-repl-device/include"
           - "$(SRCROOT)/../../../vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
           - "$(SRCROOT)/../../../bridge"
         LIBRARY_SEARCH_PATHS:
           - "$(SRCROOT)/Vendor/lib"
         OTHER_LDFLAGS:
           - "-lmruby"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"   # launch screen => full-screen layout (no letterbox)
         GENERATE_INFOPLIST_FILE: "YES"
         TARGETED_DEVICE_FAMILY: "1,2"
         PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.PicoRubyRunner
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: YOUR_TEAM_ID  # replace with your Apple Team ID (Xcode > Settings > Accounts) for device builds
+        DEVELOPMENT_TEAM: SM5792D355  # this account's Apple Team ID (Xcode > Settings > Accounts)

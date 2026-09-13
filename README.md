@@ -137,7 +137,9 @@ rake clobber   # clean + remove vendor/picoruby
 |---|---|---|
 | `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picoruby source repository |
 | `PICORUBY_REF` | `port-darwin` | ref to fetch — see [Vendor source](#vendor-source) |
-| `IOS_MIN` | `17.0` | iOS deployment target minimum |
+| `IOS_MIN` | `17.0` | iOS version-min for the cross-built `libmruby.a` (the example apps themselves target iOS 26 for Liquid Glass) |
+| `SIM_NAME` | `iPhone 16e` | Simulator model `ios:*:run` boots (falls back to the first available iPhone) |
+| `DEVICE_NAME` | unset | substring pinning which paired device the `device:` tasks target; needed when several are paired and none reports "connected" |
 | `WATCHOS_MIN` | `11.0` | watchOS deployment target minimum |
 | `PICORUBY_BLE_GEMDIR` | vendor's `picoruby-ble` | alternate picoruby-ble checkout for the BLE examples |
 | `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | build config for the `macos:` host tasks |
@@ -157,7 +159,9 @@ compiler inside the app. Each has its own README.
 | [ios/stackchan](examples/ios/stackchan/README.md) | `ios:stackchan` | a BLE central driving a [Stack-chan](https://github.com/meganetaaan/stack-chan) robot over NUS |
 | [ios/tilt-synth](examples/ios/tilt-synth/README.md) | `ios:tiltsynth` | Device Motion to FM synthesis, with the musical mapping in Ruby |
 | [watchos/led-toggle](examples/watchos/led-toggle/README.md) | `watchos:led` | a Ruby state machine on the Apple Watch (`arm64_32`) |
+| [watchos/stackchan](examples/watchos/stackchan/README.md) | `watchos:stackchan` | the Stack-chan controller on the wrist: a BLE central in Ruby, watch-only |
 | [macos/ls](examples/macos/ls/README.md) | — | a demo script for `rake macos:single` |
+| [macos/ble-subscribe](examples/macos/ble-subscribe/README.md) | — | a BLE central on the Mac that subscribes to a peripheral's notifications |
 
 Each namespace exposes the same four steps plus an `all` that chains them, and
 a `device:` sub-namespace that does the same against connected hardware:
@@ -228,13 +232,14 @@ is a worked example.
 
 ## Verifying the build
 
-Four checks, from cheapest to most involved.
+The checks, from cheapest to most involved.
 
 **`rake smoke`** builds picoruby for the host with
 `build_config/r2p2-picoruby-host.rb` — the same core gem set and the same port
 chain every iOS config starts from — links `bridge/smoke_test.c` against it, and
-runs it. This is the fast gate on the bridge and on `ports/darwin/machine.c`,
-and it is what CI runs on every push.
+runs it. This is the fast gate on the bridge and on `ports/darwin/machine.c`.
+**`rake regress:unit`** wraps it together with every example's standalone
+`test_*.rb`, and that pair is what CI runs on every push and pull request.
 
 **`rake ios:<name>:device:check`** links the device app unsigned, catching
 anything the device SDK forbids that the Simulator and host builds allow.
@@ -255,7 +260,7 @@ If the runs disagree, the task aborts as NON-DETERMINISTIC: something outside
 the build is influencing the result. Raw logs land under `build/observe/`, and
 the first OK run is kept as a golden file for later runs to diff against.
 
-The Simulator is pinned by UDID (`SIM_UDID`, defaulted in the Rakefile) so its
+The Simulator is pinned by UDID (`SIM_UDID`, defaulted in the Rakefile to the iPhone 16e) so its
 container state stays a controlled variable across runs — do not erase or
 recreate it. When that UDID is absent, the first available iPhone Simulator is
 used and a warning is printed.
@@ -265,6 +270,18 @@ it clean-builds `ios-repl`'s `libmruby.a` twice and compares hashes of the
 archive's extracted members, ignoring the `ar` header timestamps that change on
 every build regardless of code. Equal hashes mean the same inputs really did
 produce the same objects.
+
+**`rake regress`** is the whole sweep: `regress:unit`, then every example linked
+unsigned for a real device, then every example built for the Simulator, then the
+macOS host build. It runs each step in its own process, keeps going past a
+failure, and reports once at the end with per-step logs under `build/regress/`.
+The device pass runs before the Simulator pass on purpose — both write the same
+`Vendor/lib/libmruby.a`, so the Simulator pass goes last and leaves every
+example staged in the arch `rake <example>:run` expects.
+`EXAMPLE=ios:torch rake regress:one` does a single example.
+`.github/workflows/regression.yml` fans that same task out over all of them,
+weekly and on demand; it builds its matrix from `rake regress:examples`, so
+adding an example to the Rakefile adds it to CI with no workflow edit.
 
 ## How the pieces fit
 
@@ -362,24 +379,26 @@ nothing here is pinned to a single ref.
 
 ```
 R2P2-darwin/
-  Rakefile               check / setup / refresh / smoke / ios:<example>:* /
-                         watchos:led:* / determinism:* / clean / clobber
+  Rakefile               check / setup / refresh / smoke / regress:* /
+                         ios:<example>:* / watchos:<example>:* / determinism:* /
+                         clean / clobber
   rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
   build_config/
-    r2p2-picoruby-ios-<example>-{sim,device}.rb    per-example iOS cross-builds
-    r2p2-picoruby-watchos-{sim,device}.rb          watchOS cross-builds
-    recompile_arm64_32.rb                          arm64_32 re-archive for the watch
-    r2p2-picoruby-darwin{,-ble,-single}.rb         macOS host builds
-    r2p2-picoruby-host.rb                          host build behind `rake smoke`
+    r2p2-picoruby-ios-<example>-{sim,device}.rb     per-example iOS cross-builds
+    r2p2-picoruby-watchos-<example>-{sim,device}.rb watchOS cross-builds
+    recompile_arm64_32.rb                           arm64_32 re-archive for the watch
+    r2p2-picoruby-darwin{,-ble,-single}.rb          macOS host builds
+    r2p2-picoruby-host.rb                           host build behind `rake smoke`
     r2p2-picoruby-ios-{rng,mbedtls,io-console}-sim.rb
-                                                   single-gem darwin-port probes (no rake
-                                                   task; see below)
-    r2p2-stackchan-pc.rb                           host build for stackchan-picoruby's PC side
+                                                    single-gem darwin-port probes (no rake
+                                                    task; see below)
+    r2p2-stackchan-pc.rb                            host build for stackchan-picoruby's PC side
   bridge/                picoruby_bridge.{c,h}, task_hal_ios.c, smoke_test.c
   examples/
     ios/<name>/          SwiftUI app + app.rb (+ example-local gems where used)
-    watchos/led-toggle/  the watchOS example
+    watchos/<name>/      SwiftUI app + app.rb, watch-only
     macos/ls/            demo script for rake macos:single
+    macos/ble-subscribe/ a BLE central that subscribes to a peripheral
   vendor/picoruby/       fetched by rake setup (gitignored)
   build/                 all build output, MRUBY_BUILD_DIR (gitignored)
 ```

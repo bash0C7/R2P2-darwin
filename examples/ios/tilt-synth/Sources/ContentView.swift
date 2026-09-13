@@ -11,43 +11,34 @@ struct ContentView: View {
     @State private var roll: Double = 0
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Tilt Synth").font(.headline)
-            Text("Ruby (PicoRuby) reads Device Motion and drives an AVAudioEngine FM synth. Tilt to change pitch; roll to change FM depth.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        NavigationStack {
+            VStack(spacing: 0) {
+                VStack(spacing: 16) {
+                    Gauge(value: pitch, in: -30...30) {
+                        Text("Pitch (前後)")
+                    } currentValueLabel: {
+                        Text(String(format: "%.0f°", pitch))
+                    }
+                    .gaugeStyle(.accessoryLinearCapacity)
+                    .tint(.blue)
 
-            Gauge(value: pitch, in: -30...30) {
-                Text("Pitch (前後)")
-            } currentValueLabel: {
-                Text(String(format: "%.0f°", pitch))
-            }
-            .gaugeStyle(.accessoryLinearCapacity)
-            .tint(.blue)
-
-            Gauge(value: roll, in: -45...45) {
-                Text("Roll (左右)")
-            } currentValueLabel: {
-                Text(String(format: "%.0f°", roll))
-            }
-            .gaugeStyle(.accessoryLinearCapacity)
-            .tint(.orange)
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(log.isEmpty ? "—" : log)
-                        .font(.system(.footnote, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .id("LOGEND")
+                    Gauge(value: roll, in: -45...45) {
+                        Text("Roll (左右)")
+                    } currentValueLabel: {
+                        Text(String(format: "%.0f°", roll))
+                    }
+                    .gaugeStyle(.accessoryLinearCapacity)
+                    .tint(.orange)
                 }
-                .frame(maxHeight: .infinity)
-                .border(.gray)
-                .onChange(of: log) { _, _ in proxy.scrollTo("LOGEND", anchor: .bottom) }
+                .padding()
+                .glassEffect(in: .rect(cornerRadius: 20))
+                .padding([.horizontal, .top])
+
+                LogPane(text: log)
             }
+            .navigationTitle("Tilt Synth")
+            .navigationSubtitle("Tilt: pitch · Roll: FM depth")
         }
-        .padding()
         .onAppear { boot() }
     }
 
@@ -75,6 +66,27 @@ struct ContentView: View {
             guard parts.count == 2, let value = Double(parts[1]) else { continue }
             if parts[0] == "pitch" { pitch = value }
             if parts[0] == "roll" { roll = value }
+        }
+    }
+}
+
+// Monospaced, auto-scrolling log in a rounded content pane.
+struct LogPane: View {
+    let text: String
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                Text(text.isEmpty ? "—" : text)
+                    .font(.system(.footnote, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding()
+                    .id("LOGEND")
+            }
+            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 20))
+            .padding()
+            .onChange(of: text) { _, _ in proxy.scrollTo("LOGEND", anchor: .bottom) }
         }
     }
 }

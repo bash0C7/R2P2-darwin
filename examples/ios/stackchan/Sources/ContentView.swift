@@ -8,63 +8,71 @@ struct ContentView: View {
     @State private var connected: Bool = false
     @State private var busy: Bool = false
     @State private var connectFailed: Bool = false
+    @State private var speakText: String = "ぼくスタックチャン、かわいいよ"
+    @State private var speaking: Bool = false
 
     private let faces = ["neutral", "smile", "joy", "surprised", "sad", "angry"]
     private let ledColors = ["red", "green", "blue", "yellow", "white", "off"]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Stack-chan Controller").font(.headline)
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    group("Face") {
+                        flow(faces) { face in send("face", face) }
+                    }
 
-                HStack {
-                    Button("Connect") { connect() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(busy)
-                    Text(statusText)
-                        .font(.subheadline)
-                        .foregroundStyle(statusColor)
-                }
+                    group("LED") {
+                        flow(ledColors) { color in send("led", color) }
+                    }
 
-                group("Face") {
-                    flow(faces) { face in send("face", face) }
-                }
-
-                group("LED") {
-                    flow(ledColors) { color in send("led", color) }
-                }
-
-                group("Head") {
-                    VStack(spacing: 6) {
-                        HStack {
-                            Button("Left")   { send("head", "left:40:400") }
-                            Button("Center") { send("head", "center") }
-                            Button("Right")  { send("head", "right:40:400") }
+                    group("Head") {
+                        VStack(spacing: 8) {
+                            HStack {
+                                Button("Left")   { send("head", "left:40:400") }
+                                Button("Center") { send("head", "center") }
+                                Button("Right")  { send("head", "right:40:400") }
+                            }
+                            HStack {
+                                Button("Up") { send("head", "up:30:400") }
+                            }
                         }
-                        HStack {
-                            Button("Up") { send("head", "up:30:400") }
+                        .buttonStyle(.glass)
+                    }
+
+                    group("Speech") {
+                        VStack(spacing: 8) {
+                            TextField("しゃべらせる言葉", text: $speakText)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Speak") { speak() }
+                                .buttonStyle(.glass)
+                                .disabled(speaking || speakText.isEmpty)
                         }
                     }
-                    .buttonStyle(.bordered)
-                }
 
-                group("Torque") {
-                    HStack {
-                        Button("On")  { send("torque", "on") }
-                        Button("Off") { send("torque", "off") }
+                    group("Output") {
+                        Text(output.isEmpty ? "—" : output)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding()
+                            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 20))
                     }
-                    .buttonStyle(.bordered)
                 }
-
-                Text("Output").font(.subheadline)
-                Text(output.isEmpty ? "—" : output)
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(8)
-                    .background(Color(.secondarySystemBackground))
+                .padding()
             }
-            .padding()
+            .navigationTitle("Stack-chan")
+            .navigationSubtitle(statusText)
+            .toolbar {
+                ToolbarItem(placement: .bottomBar) {
+                    Button(connected ? "Connected" : "Connect") {
+                        connect()
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(statusColor)
+                    .disabled(busy)
+                }
+            }
         }
         .onAppear { boot() }
     }
@@ -72,7 +80,7 @@ struct ContentView: View {
     @ViewBuilder
     private func group<Content: View>(_ title: String,
                                       @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.subheadline).bold()
             content()
         }
@@ -80,11 +88,11 @@ struct ContentView: View {
 
     @ViewBuilder
     private func flow(_ items: [String], _ action: @escaping (String) -> Void) -> some View {
-        let columns = [GridItem(.adaptive(minimum: 88))]
+        let columns = [GridItem(.adaptive(minimum: 96))]
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
             ForEach(items, id: \.self) { item in
                 Button(item) { action(item) }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
             }
         }
     }
@@ -110,7 +118,7 @@ struct ContentView: View {
     private var statusColor: Color {
         if connected { return .green }
         if connectFailed && !busy { return .red }
-        return .secondary
+        return .accentColor
     }
 
     // Connect is long-running (the scan blocks the VM thread for up to 30 s):
@@ -131,6 +139,27 @@ struct ContentView: View {
     private func send(_ method: String, _ arg: String) {
         VMExecutor.shared.call(method, arg) { result in
             self.output = result.isEmpty ? "(no output)" : result
+        }
+    }
+
+    // Speak is long-running (synthesis, then the VM thread streams audio and
+    // sits out the device's drain window): single-flight like connect.
+    // Serial-queue ordering makes subtitle land before the audio frames.
+    private func speak() {
+        speaking = true
+        output = "Synthesizing…"
+        let text = speakText
+        send("subtitle", text)
+        SpeechSynth.shared.synthesize(text: text) { hex in
+            guard let hex else {
+                self.output = "speech synthesis failed"
+                self.speaking = false
+                return
+            }
+            VMExecutor.shared.call("speak_audio", hex) { result in
+                self.output = result.isEmpty ? "(no output)" : result
+                self.speaking = false
+            }
         }
     }
 }

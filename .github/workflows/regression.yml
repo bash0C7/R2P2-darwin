@@ -1,0 +1,105 @@
+name: Regression
+
+# The full sweep: every example linked for a real device and built for the
+# Simulator. Too slow to gate a PR, so it runs on a schedule and on demand.
+# Its real job is catching drift the repo cannot see in its own diff — the
+# picoruby fork's port-darwin branch moves independently, and upstream master
+# moves under that.
+on:
+  workflow_dispatch:
+  schedule:
+    # Sunday 18:00 UTC = Monday 03:00 JST. GitHub disables scheduled workflows
+    # after 60 days without repository activity; re-enable from the Actions tab.
+    - cron: "0 18 * * 0"
+
+jobs:
+  # The example list lives in the Rakefile (REGRESSION_EXAMPLES, derived from
+  # IOS_EXAMPLES), so a new example joins this matrix by being defined there.
+  # Nothing to edit here.
+  examples:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.list.outputs.examples }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+      - id: list
+        run: echo "examples=$(rake regress:examples | tail -1)" >> "$GITHUB_OUTPUT"
+
+  unit:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+
+      - name: Resolve picoruby ref
+        id: picoruby
+        run: echo "sha=$(git ls-remote https://github.com/bash0C7/picoruby.git port-darwin | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache vendor/picoruby
+        uses: actions/cache@v6
+        with:
+          path: vendor/picoruby
+          key: picoruby-${{ steps.picoruby.outputs.sha }}
+
+      - name: Cache host build
+        uses: actions/cache@v6
+        with:
+          path: build/host
+          key: build-host-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**') }}
+
+      - run: rake regress:unit
+
+  example:
+    needs: examples
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      # One example's failure must not cancel the other seven — the point of a
+      # sweep is the whole picture.
+      fail-fast: false
+      matrix:
+        example: ${{ fromJSON(needs.examples.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Resolve picoruby ref
+        id: picoruby
+        run: echo "sha=$(git ls-remote https://github.com/bash0C7/picoruby.git port-darwin | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache vendor/picoruby
+        uses: actions/cache@v6
+        with:
+          path: vendor/picoruby
+          key: picoruby-${{ steps.picoruby.outputs.sha }}
+
+      # A stale restore here is harmless: stage_libmruby stamps each build dir
+      # with the picoruby SHA and build_config digest that produced it, and
+      # wipes the dir when they no longer match.
+      - name: Cache build output
+        uses: actions/cache@v6
+        with:
+          path: build
+          key: build-${{ matrix.example }}-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**') }}
+
+      - name: Device link check + Simulator build
+        run: rake regress:one
+        env:
+          EXAMPLE: ${{ matrix.example }}
+
+      # Per-step build logs; without them a failure here means re-running the
+      # whole 60-minute job locally to see what xcodebuild actually said.
+      # Named by job index, not by example: artifact names cannot contain the
+      # colon in "ios:torch".
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regress-logs-${{ strategy.job-index }}
+          path: build/regress/
+          if-no-files-found: ignore

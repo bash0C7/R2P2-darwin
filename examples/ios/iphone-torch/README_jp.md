@@ -2,11 +2,26 @@
 
 English: [README.md](README.md)
 
-組み込み開発のhello worldである「Lチカ」の、iOS版です。2つのボタンでiPhoneの
-ライトをon / offし、その振る舞いはすべてRubyにあります。`app.rb`が`Torch`
-クラスを呼び、`picoruby-iphone-torch` gemのdarwin portがその呼び出しを
+組み込み開発のhello worldである「Lチカ」の、iOS版です。プログラム全体が`app.rb`の
+10行で、マイコン版とまったく同じ読み味です。
+
+```ruby
+require "torch"
+
+torch = Torch.new
+
+loop do
+  torch.on
+  sleep 0.5
+  torch.off
+  sleep 0.5
+end
+```
+
+`Torch`は`picoruby-iphone-torch` gemのクラスで、そのdarwin portが`on` / `off`を
 `AVCaptureDevice`の操作へ変換します。SwiftUI層はライトのロジックを1つも持たず、
-PicoRuby VMを起動してボタンのタップを転送するだけです。
+`app.rb`を画面に表示し、RunをタップしたらPicoRuby VMへ渡し、Stopをタップしたら停止フラグを
+立てるだけです。
 
 これは[virtual-peripheral](../virtual-peripheral/README_jp.md)の設計、つまり
 「Rubyがpicorubyのport経由でAppleのフレームワークを駆動する」を、ハードウェアの
@@ -15,12 +30,20 @@ PicoRuby VMを起動してボタンのタップを転送するだけです。
 
 ## しくみ
 
-ボタン1押しが`vm_call` 1回に対応します。戻り値は`app.rb`がprintした内容で、UIは
-それをログに追記します。
+SwiftからVMへの呼び出しはRunのタップ1回だけです。`VMExecutor.start`が`app.rb`を
+アプリ内のprismコンパイラでコンパイルして実行します（`vm_open`）。スクリプトの
+`loop`は返ってこないので、VMスレッドはStopまでずっと`vm_open`の中に居て
+ライトを点滅させ続けます。`vm_call`もpollタイマーもログもなく、出力はライトそのものです。
+
+Stopは別スレッドからVMに触りません。gemの停止フラグ（`src/torch.c`の
+`TORCH_request_stop`）を立てるだけで、スクリプトの次の`sleep`がそれを見てライトを消し
+`StopIteration`を投げます。`Kernel#loop`がそれをrescueして`loop do ... end`が返り、
+`app.rb`が終わって`vm_open`が戻り、VMは自分のスレッド上で閉じられます。Runは新しいVMを
+開きます。
 
 ```
-[SwiftUI の ON / OFF ボタン]
-  --vm_call(vm, "on"/"off", "")-->  $app（TorchApp、Ruby）  -->  Torch#on / #off
+[SwiftUI の Run ボタン]                    [Stop ボタン] --> TORCH_request_stop()
+  --vm_open(app.rb)-->  loop do torch.on / torch.off end（Ruby、VM queue 上）
     --> src/mruby/torch.c           mruby の C メソッド
     --> TORCH_set(true/false)       include/torch.h、port ABI
     --> ports/darwin/torch.c        darwin port
@@ -28,39 +51,23 @@ PicoRuby VMを起動してボタンのタップを転送するだけです。
     --> AVCaptureDevice.torchMode = .on / .off
 ```
 
-virtual-peripheralと違い、ここにpollタイマーはありません。ライトは撃ちっぱなしで
-よいので、1押しにつき`vm_call` 1回で話が終わります。
-
 `app.rb`はバイトコードとしてバイナリに焼き込まれていません。プレーンテキストの
-リソースとして同梱され、起動時にアプリ内のprismコンパイラがコンパイルします
-（`VMExecutor.start` → `vm_open(bootSource)`）。いつライトを点けるか、どう
-点滅させるか、何をログに出すか——それらはすべてそのRubyファイルにあります。C gem
-が公開するのは`Torch`プリミティブ（`on` / `off` / `available?`）だけ、Swift
-パッケージがやるのは`AVCaptureDevice`を叩くことだけで、どちらも点滅や回数の
-ロジックを持ちません。
-
-### 点滅はRubyのループ
-
-具体的に言うと、ONはRubyで定義された点滅を走らせます。`app.rb`の`while`ループが
-`@torch.on`と`@torch.off`を`BLINK_COUNT`回、間に`sleep_ms(BLINK_MS)`を挟んで呼び、
-最後はライトを点けたままにし、押した回数もRubyで数えます。文字通りのLチカで、
-ループがRuby、光がハードウェアです。
-
-CもSwiftも触らずに点滅を変えられます。
+リソースとして同梱されるので、CもSwiftも触らずに点滅を変えられます。
 
 ```sh
-# examples/ios/iphone-torch/app.rb を編集。例えば BLINK_COUNT = 7 にする
+# examples/ios/iphone-torch/app.rb を編集。例えば sleep 0.1 にする
 rake ios:torch:device:build   # .app 内の app.rb リソースを入れ替えるだけ。
                               # libmruby.a と PicoTorchDarwin は無変更
 rake ios:torch:device:run     # 入れ直して起動
 ```
 
-これでライトは7回光ります。変えたのはRubyだけで、コンパイル済みのC gemとSwift
-バックエンドは1バイトも同じです。
+### `sleep`と`require "torch"`はgemが持つ
 
-`sleep_ms`は`mruby-task`由来のKernel関数です。iOSではブリッジのtask HAL
-（`../../../bridge/task_hal_ios.c`）を通して実時間でblockするので、点滅の間の
-休みはビジーウェイトではなく本物の待ちです。
+torchビルドは縮小gemセットで、`mruby-task`にあるのは`sleep_ms`だけ（`Kernel#sleep`
+は無い）、`require`もgemが登録した名前しか解決しません。どちらも
+`picoruby-iphone-torch/mrblib/torch.rb`（`sleep_ms`に委譲する秒指定の`sleep`）と
+`mrbgem.rake`の`spec.require_name = 'torch'`で用意しています。ビルド内で`sleep`を
+定義する他のgemは無いので衝突しません。
 
 ## gem: `picoruby-iphone-torch/`
 
@@ -72,8 +79,9 @@ picorubyのportsモデルに従い、インターフェースは`include/`に、
 |---|---|
 | `mrbgem.rake` | gem spec。依存は宣言しない |
 | `include/torch.h` | port ABI: `TORCH_set(bool)`、`TORCH_available()` |
-| `src/torch.c` | VMへのdispatch（`#include "mruby/torch.c"`） |
+| `src/torch.c` | 停止フラグ（`TORCH_request_stop` / `_clear_stop` / `_stop_requested`）とVMディスパッチ（`#include "mruby/torch.c"`） |
 | `src/mruby/torch.c` | `Torch`クラス（`on` / `off` / `available?`）を定義するmruby C拡張 |
+| `mrblib/torch.rb` | `sleep_ms`の上に`Kernel#sleep(sec)`を定義し`Torch.stop_requested?`を見る。boot時にロード済みなので`require "torch"`は即returnする |
 | `ports/darwin/torch.c` | `TORCH_*`からSwiftの`ptorch_*` externへ |
 | `ports/darwin/ext/` | `PicoTorchDarwin` Swiftパッケージ（`AVCaptureDevice`） |
 
@@ -97,9 +105,8 @@ exampleの`PicoBLEDarwin`とまったく同じ仕掛けです。
 rake ios:torch:all     # lib -> gen -> build -> run
 ```
 
-Simulatorにライトはありません。アプリは起動しVMも動きますが、ONは点滅せず
-`ON #<n>: torch unavailable (no actuation)`とログに出ます。このターゲットで
-確認できるのはビルドがリンクしVMが動くことまでです。
+Simulatorにライトはありません。アプリは起動しループも回りますが、`Torch#on`は
+何もしません。このターゲットで確認できるのはビルドがリンクしVMが動くことまでです。
 
 ### 実機
 
@@ -111,8 +118,7 @@ Team IDに置き換えてください。詳細は
 rake ios:torch:device:all   # 接続済み・署名済みのiPhoneが要る
 ```
 
-実機ではONがライトを`BLINK_COUNT`回光らせてから点けたままにし
-（ログは`ON #<n>: blinked <BLINK_COUNT>x in Ruby, now lit`）、OFFで消えます。
+実機ではRunをタップすると、Stopまでライトが1Hzで点滅し続けます。
 
 ## 個別タスク
 
@@ -122,7 +128,7 @@ rake ios:torch:device:all   # 接続済み・署名済みのiPhoneが要る
 | `rake ios:torch:gen` | `project.yml`から`Torch.xcodeproj`を生成 |
 | `rake ios:torch:build` | Simulator向けにビルド |
 | `rake ios:torch:run` | Simulatorを起動しインストールしてlaunch |
-| `rake ios:torch:observe` | 固定Simulatorで繰り返し起動し各runを分類 |
+| `rake ios:torch:observe` | 固定Simulatorで繰り返し起動し各runを分類（golden: `vm_open`直前に出る`[Torch] VM starting`） |
 | `rake ios:torch:device:lib` | device SDK（iphoneos arm64）向けに`libmruby.a`をクロスビルド |
 | `rake ios:torch:device:check` | 署名なしでgeneric device向けにリンク（実機不要） |
 | `rake ios:torch:device:build` | 接続済みデバイス向けに署名してビルド |

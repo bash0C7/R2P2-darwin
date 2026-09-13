@@ -6,13 +6,16 @@
 /examples/*/*/Vendor/
 /examples/*/*/*.xcodeproj
 # process docs (kept local; may hold in-progress / sensitive notes)
-/docs/superpowers/
 /HANDOFF.md
 # isolated worktrees (harness-managed)
 /.claude/worktrees/
+# subagent-driven-development scratch (ledger, briefs, review packages)
+/.superpowers/
 # macos:single staging
 /tmp/
 # Claude Code local-only settings (permission grants etc.)
 /.claude/settings.local.json
 # macOS Finder metadata
 .DS_Store
+# Xcode per-user state written when a Swift package (ports/*/ext) is opened
+.swiftpm/

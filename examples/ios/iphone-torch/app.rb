@@ -1,76 +1,10 @@
-# iPhone Torch — the whole behaviour is Ruby. The `Torch` class comes from the
-# linked picoruby-iphone-torch gem; its on/off/available? drive AVCaptureDevice
-# through the gem's Darwin port. This app owns the dispatch the Swift buttons call.
-#
-# vm_call(vm, "on"/"off", "") invokes $app.on / $app.off and returns whatever this
-# prints (captured stdout), which the UI appends to its log.
-#
-# app.rb is compiled at runtime, in-app, by PicoRuby's prism compiler
-# (VMExecutor.start -> vm_open): the flashing pattern, the press count, and the
-# timing all live here in Ruby and change with no rebuild of the C gem or the
-# Swift backend — only this resource file. ON flashes BLINK_COUNT times (a
-# `while` loop + sleep_ms) then stays lit and counts presses; OFF turns the
-# torch off.
-BLINK_COUNT = 3     # change this, reinstall, and the torch flashes that many times
-BLINK_MS    = 120   # flash on/off duration in milliseconds
+require "torch"
 
-class TorchApp
-  def initialize
-    @torch = Torch.new
-    @presses = 0
-    @log = []
-    if @torch.available?
-      log "ready: torch available — ON flashes #{BLINK_COUNT}x then stays lit"
-    else
-      log "ready: no torch on this device (Simulator?) — on/off will be no-ops"
-    end
-  end
+torch = Torch.new
 
-  def on(arg = nil)
-    @presses += 1
-    if @torch.available?
-      blink(BLINK_COUNT)
-      @torch.on            # leave it lit after the flashes
-      log "ON ##{@presses}: blinked #{BLINK_COUNT}x in Ruby, now lit"
-    else
-      log "ON ##{@presses}: torch unavailable (no actuation)"
-    end
-    flush_log
-  end
-
-  def off(arg = nil)
-    @torch.off
-    log "OFF: torch off"
-    flush_log
-  end
-
-  private
-
-  # Pure-Ruby blink: drive the gem primitive on/off in a loop, pausing with
-  # sleep_ms (Kernel function from mruby-task; on iOS it real-time blocks via the
-  # bridge HAL).
-  def blink(times)
-    i = 0
-    while i < times
-      @torch.on
-      sleep_ms(BLINK_MS)
-      @torch.off
-      sleep_ms(BLINK_MS)
-      i += 1
-    end
-  end
-
-  def log(msg)
-    @log.push(msg)
-  end
-
-  def flush_log
-    return nil if @log.empty?
-    out = @log.join("\n")
-    @log = []
-    print out
-    nil
-  end
+loop do
+  torch.on
+  sleep 0.5
+  torch.off
+  sleep 0.5
 end
-
-$app = TorchApp.new

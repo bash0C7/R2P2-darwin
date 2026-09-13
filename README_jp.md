@@ -136,7 +136,9 @@ rake clobber   # clean に加えて vendor/picoruby も削除
 |---|---|---|
 | `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picorubyのソースリポジトリ |
 | `PICORUBY_REF` | `port-darwin` | 取得するref — [vendorの取得元](#vendorの取得元)を参照 |
-| `IOS_MIN` | `17.0` | iOSのdeployment target下限 |
+| `IOS_MIN` | `17.0` | クロスビルドする`libmruby.a`のiOS version-min（exampleアプリ自体はLiquid GlassのためiOS 26をtarget） |
+| `SIM_NAME` | `iPhone 16e` | `ios:*:run`が起動するSimulatorの機種（無ければ先頭のiPhoneにフォールバック） |
+| `DEVICE_NAME` | 未設定 | `device:`タスクが対象とする実機を名前の部分一致で固定する。複数台がpairedで、どれも"connected"を報告しないときに必要 |
 | `WATCHOS_MIN` | `11.0` | watchOSのdeployment target下限 |
 | `PICORUBY_BLE_GEMDIR` | vendorの`picoruby-ble` | BLE exampleが使うpicoruby-bleの別チェックアウト |
 | `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | `macos:`ホストタスクのビルド設定 |
@@ -156,7 +158,9 @@ iOS / watchOSのexampleはいずれもSwiftUIアプリで、振る舞いは`app.
 | [ios/stackchan](examples/ios/stackchan/README_jp.md) | `ios:stackchan` | NUS経由で[Stack-chan](https://github.com/meganetaaan/stack-chan)を操るBLEセントラル |
 | [ios/tilt-synth](examples/ios/tilt-synth/README_jp.md) | `ios:tiltsynth` | Device MotionからFM音源へ。音楽的マッピングはRuby側 |
 | [watchos/led-toggle](examples/watchos/led-toggle/README_jp.md) | `watchos:led` | Apple Watch（`arm64_32`）上で動くRubyの状態機械 |
+| [watchos/stackchan](examples/watchos/stackchan/README_jp.md) | `watchos:stackchan` | 腕の上のStack-chan操作アプリ。RubyのBLEセントラル、watch単体 |
 | [macos/ls](examples/macos/ls/README_jp.md) | — | `rake macos:single`のデモスクリプト |
+| [macos/ble-subscribe](examples/macos/ble-subscribe/README_jp.md) | — | MacをBLE centralにしてperipheralのnotificationを受け取る |
 
 どのnamespaceも同じ4ステップとそれを連結する`all`、さらに接続した実機に対して
 同じことをする`device:`サブnamespaceを持ちます。
@@ -226,13 +230,14 @@ BLE設定でビルドしたバイナリは、`./build/host/bin/picoruby`を直�
 
 ## ビルドの検証
 
-安いものから順に4つあります。
+安いものから順に並べます。
 
 **`rake smoke`**は`build_config/r2p2-picoruby-host.rb`でpicorubyをホスト
 ビルドし（全iOS設定が出発点とする共通のgem集合とport chainを同じく持ちます）、
 `bridge/smoke_test.c`をリンクして実行します。ブリッジと
-`ports/darwin/machine.c`に対する高速なgateであり、CIが毎pushで回しているのも
-これです。
+`ports/darwin/machine.c`に対する高速なgateです。**`rake regress:unit`**はこれと
+各exampleの単体テスト`test_*.rb`をまとめたもので、CIが毎push・毎pull requestで
+回しているのはこちらです。
 
 **`rake ios:<name>:device:check`**はdevice用アプリを署名なしでリンクし、
 Simulatorビルドやホストビルドでは通ってしまうdevice SDK禁止事項を捕まえます。
@@ -252,7 +257,7 @@ runの結果が割れた場合、タスクはNON-DETERMINISTICとしてabortし�
 外側の何かが結果に影響しているということです。生ログは`build/observe/`に落ち、
 最初のOK runはgoldenファイルとして保存され、以後のrunがdiff対象にします。
 
-SimulatorはUDID（`SIM_UDID`。既定値はRakefile内）で固定し、コンテナ状態をrun
+SimulatorはUDID（`SIM_UDID`。既定値はRakefile内のiPhone 16e）で固定し、コンテナ状態をrun
 間で統制された変数に保ちます。消去や再作成はしないでください。そのUDIDが手元に
 無い場合は最初に利用可能なiPhone Simulatorが使われ、警告が出ます。
 
@@ -260,6 +265,16 @@ SimulatorはUDID（`SIM_UDID`。既定値はRakefile内）で固定し、コン�
 `libmruby.a`をクリーンビルドで2回作り、アーカイブから展開したメンバのハッシュを
 比較します（コードに関係なく毎回変わる`ar`ヘッダのタイムスタンプは無視）。
 ハッシュが一致すれば、同じ入力が本当に同じオブジェクトを産んだということです。
+
+**`rake regress`**が全体の横断確認です。`regress:unit`、全exampleのdevice向け
+無署名リンク、全exampleのSimulatorビルド、macOSホストビルドの順に回します。各stepを
+別プロセスで実行し、失敗しても止まらず最後にまとめて報告します。step単位のlogは
+`build/regress/`に残ります。device passをSimulator passより先に置いてあるのは意図的で、
+両者が同じ`Vendor/lib/libmruby.a`へ書き込むため、最後に走るSimulator passが
+`rake <example>:run`の期待するarchを各exampleに残します。1 exampleだけなら
+`EXAMPLE=ios:torch rake regress:one`です。`.github/workflows/regression.yml`は同じ
+taskをexampleごとに並列で回します（週次 + 手動）。matrixは`rake regress:examples`から
+組み立てるので、Rakefileにexampleを足せばworkflowを触らずCIにも載ります。
 
 ## 全体の組み立て
 
@@ -355,24 +370,26 @@ upstreamの`picoruby/picoruby` masterにはこれらのportがありません。
 
 ```
 R2P2-darwin/
-  Rakefile               check / setup / refresh / smoke / ios:<example>:* /
-                         watchos:led:* / determinism:* / clean / clobber
+  Rakefile               check / setup / refresh / smoke / regress:* /
+                         ios:<example>:* / watchos:<example>:* / determinism:* /
+                         clean / clobber
   rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
   build_config/
-    r2p2-picoruby-ios-<example>-{sim,device}.rb    example ごとの iOS クロスビルド
-    r2p2-picoruby-watchos-{sim,device}.rb          watchOS クロスビルド
-    recompile_arm64_32.rb                          Apple Watch 向け arm64_32 再アーカイブ
-    r2p2-picoruby-darwin{,-ble,-single}.rb         macOS ホストビルド
-    r2p2-picoruby-host.rb                          `rake smoke` が使うホストビルド
+    r2p2-picoruby-ios-<example>-{sim,device}.rb     example ごとの iOS クロスビルド
+    r2p2-picoruby-watchos-<example>-{sim,device}.rb watchOS クロスビルド
+    recompile_arm64_32.rb                           Apple Watch 向け arm64_32 再アーカイブ
+    r2p2-picoruby-darwin{,-ble,-single}.rb          macOS ホストビルド
+    r2p2-picoruby-host.rb                           `rake smoke` が使うホストビルド
     r2p2-picoruby-ios-{rng,mbedtls,io-console}-sim.rb
-                                                   単一 gem の darwin port 検証用
-                                                   （rake タスク無し。下記参照）
-    r2p2-stackchan-pc.rb                           stackchan-picoruby の PC 側ホストビルド
+                                                    単一 gem の darwin port 検証用
+                                                    （rake タスク無し。下記参照）
+    r2p2-stackchan-pc.rb                            stackchan-picoruby の PC 側ホストビルド
   bridge/                picoruby_bridge.{c,h}, task_hal_ios.c, smoke_test.c
   examples/
     ios/<name>/          SwiftUI アプリ + app.rb（必要なら example 専用 gem）
-    watchos/led-toggle/  watchOS example
+    watchos/<name>/      SwiftUIアプリ + app.rb、watch単体
     macos/ls/            rake macos:single のデモスクリプト
+    macos/ble-subscribe/ peripheralのnotificationを受け取るBLE central
   vendor/picoruby/       rake setup が取得（gitignore 対象）
   build/                 全ビルド出力、MRUBY_BUILD_DIR（gitignore 対象）
 ```

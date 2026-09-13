@@ -7,25 +7,11 @@ struct ContentView: View {
     @State private var log: String = "Starting VM…"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Virtual BLE Peripheral").font(.headline)
-            Text("A PicoRuby-defined GATT profile, served by the picoruby-ble Darwin port. Connect from a BLE central; activity streams below.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(log.isEmpty ? "—" : log)
-                        .font(.system(.footnote, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .id("LOGEND")
-                }
-                .frame(maxHeight: .infinity)
-                .border(.gray)
-                .onChange(of: log) { _, _ in proxy.scrollTo("LOGEND", anchor: .bottom) }
-            }
+        NavigationStack {
+            LogPane(text: log)
+                .navigationTitle("Virtual BLE Peripheral")
+                .navigationSubtitle("PicoRuby GATT profile — connect from a central")
         }
-        .padding()
         .onAppear { boot() }
     }
 
@@ -39,6 +25,27 @@ struct ContentView: View {
         VMExecutor.shared.start(bootSource: src) { line in
             if self.log.count > 8000 { self.log = String(self.log.suffix(6000)) }
             self.log += (self.log.isEmpty ? "" : "\n") + line
+        }
+    }
+}
+
+// Monospaced, auto-scrolling log in a rounded content pane.
+struct LogPane: View {
+    let text: String
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                Text(text.isEmpty ? "—" : text)
+                    .font(.system(.footnote, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding()
+                    .id("LOGEND")
+            }
+            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 20))
+            .padding()
+            .onChange(of: text) { _, _ in proxy.scrollTo("LOGEND", anchor: .bottom) }
         }
     }
 }

@@ -2,7 +2,7 @@ name: TiltSynth
 options:
   bundleIdPrefix: com.bash0c7.picoruby
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "26.0"   # Liquid Glass (SwiftUI .glass / .glassProminent, glassEffect) — no availability shims
 packages:
   # The Darwin (CoreMotion) backend. Its pmotion_* C symbols resolve the
   # undefined references in the staged libmruby.a at app link.
@@ -61,8 +61,9 @@ targets:
           - "$(SRCROOT)/Vendor/lib"
         OTHER_LDFLAGS:
           - "-lmruby"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"   # launch screen => full-screen layout (no letterbox)
         GENERATE_INFOPLIST_FILE: "YES"
         TARGETED_DEVICE_FAMILY: "1,2"
         PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.TiltSynth
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: YOUR_TEAM_ID  # replace with your Apple Team ID (Xcode > Settings > Accounts) for device builds
+        DEVELOPMENT_TEAM: SM5792D355  # Apple Team ID (Xcode > Settings > Accounts) for device builds

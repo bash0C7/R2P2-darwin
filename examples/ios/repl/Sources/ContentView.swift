@@ -58,34 +58,41 @@ struct ContentView: View {
     @FocusState private var editorFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("PicoRuby Runner").font(.headline)
-            TextEditor(text: $source)
-                .font(.system(.body, design: .monospaced))
-                .frame(height: 120)
-                .border(.gray)
-                .focused($editorFocused)
-            Button("Run") { run() }
-                .buttonStyle(.borderedProminent)
-            Text("Output").font(.subheadline)
-            ScrollView {
-                Text(output.isEmpty ? "—" : output)
+        NavigationStack {
+            VStack(spacing: 0) {
+                TextEditor(text: $source)
                     .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .frame(height: 140)
+                    .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 20))
+                    .padding([.horizontal, .top])
+                    .focused($editorFocused)
+
+                ScrollView {
+                    Text(output.isEmpty ? "—" : output)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding()
+                }
+                .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 20))
+                .padding()
             }
-            .frame(maxHeight: .infinity)
-            .border(.gray)
-        }
-        .padding()
-        // Tap outside the editor to dismiss the keyboard so the output is visible.
-        .contentShape(Rectangle())
-        .onTapGesture { editorFocused = false }
-        // A Done button above the keyboard for explicit dismissal.
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { editorFocused = false }
+            .navigationTitle("PicoRuby Runner")
+            // Tap outside the editor to dismiss the keyboard so the output is visible.
+            .contentShape(Rectangle())
+            .onTapGesture { editorFocused = false }
+            .toolbar {
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Run") { run() }
+                        .buttonStyle(.glassProminent)
+                }
+                // A Done button above the keyboard for explicit dismissal.
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { editorFocused = false }
+                }
             }
         }
         .onAppear { run() }

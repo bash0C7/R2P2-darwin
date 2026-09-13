@@ -4,9 +4,10 @@ English: [README.md](README.md)
 
 `stackchan-picoruby`ファームウェアで動く
 [Stack-chan](https://github.com/meganetaaan/stack-chan)ロボットへ接続し、Nordic
-UART Service（NUS）経由で表情・LED・首のサーボ・トルクを操るPicoRubyのBLE
-セントラルです。BLEのロジックはすべて`app.rb`にあり、SwiftはVMをホストして
-ボタンのタップを転送します。
+UART Service（NUS）経由で表情・LED・首のサーボ・発話（TTS音声をロボットの
+スピーカーへストリーム）を操るPicoRubyのBLEセントラルです。BLEのロジックは
+すべて`app.rb`にあり、SwiftはVMをホストしてボタンのタップとテキスト入力を
+転送します。
 
 [virtual-peripheral](../virtual-peripheral/README_jp.md)が端末をBLEの
 *ペリフェラル*にするのに対し、このexampleは*セントラル*にします。picoruby-ble
@@ -26,9 +27,9 @@ VMExecutor.swift   （単一の VM スレッド）
       │  C ブリッジ
       ▼
 app.rb   $app = Stackchan.new
-  Stackchan#connect              → RealBleLink#connect
-  Stackchan#face/led/head/torque → RealBleLink#write
-                                 → BLE::write_value_of_characteristic_without_response
+  Stackchan#connect                            → RealBleLink#connect
+  Stackchan#face/led/head/subtitle/speak_audio → RealBleLink#write
+                                                → BLE::write_value_of_characteristic_without_response
       │
       ▼
 picoruby-ble（darwin port）→ PicoBLEDarwin Swift パッケージ → CoreBluetooth
@@ -70,11 +71,17 @@ Stack-chan自身の視点（その手）であり、ファームウェア側の�
 `"left"`は電文上`R`になります。`SIDE_TO_CHAR`はハードウェアに合わせてあり、
 load-bearingです。「直さ」ないでください。
 
+## 発話合成
+
+`Sources/SpeechSynth.swift`が`AVSpeechSynthesizer.write`でオフライン合成し、
+8kHz monoへリサンプルしてmu-lawエンコードしたhex文字列を、
+`Stackchan#speak_audio`がNUS経由でロボットへストリームします。
+
 ## ハードウェア
 
 BLEリンクの両端が実機です。
 
-- iOS 17以降のiPhone（BLEが使えるモデルなら何でも）。
+- iOS 26以降のiPhone（BLEが使えるモデルなら何でも）。
 - `stackchan-picoruby`ファームウェアを書き込んだStack-chanロボット。
   `StackChan-PicoRuby-<suffix>`としてアドバタイズし、NUSを公開します。
 
@@ -91,7 +98,7 @@ BLEリンクの両端が実機です。
 | 首 — Center | yaw 0°、pitch 0°、400ms（リセット） |
 | 首 — Right | yawを右へ40°、400ms |
 | 首 — Up | pitchを上へ30°、400ms |
-| トルク — On / Off | サーボの有効・無効 |
+| 発話 — Speak | `<text:…>`字幕frame → `<A:N>`宣言後にmu-law音声を180B/20msでストリーム。ロボットのスピーカーで再生 |
 
 ## ビルド設定
 
