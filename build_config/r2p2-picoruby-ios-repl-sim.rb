@@ -62,6 +62,11 @@ MRuby::CrossBuild.new("ios-repl-sim") do |conf|
   # defined in Ruby in the repl seed so the two can be benchmarked side by side.
   conf.gem File.expand_path("../examples/ios/repl/picoruby-bench_tick", __dir__)
 
+  # Hand-written native mrbgem: runs the same bench_tick recurrence on the
+  # GPU (Metal), via the PicoGPUBenchDarwin Swift package linked at app link
+  # time (project.yml). Kernel.gpu_bench_tick, require-free like bench_tick.
+  conf.gem File.expand_path("../examples/ios/repl/picoruby-gpu_bench", __dir__)
+
   conf.gembox "mruby-posix"
   conf.gembox "core"
   conf.gembox "stdlib"

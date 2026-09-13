@@ -1,12 +1,15 @@
 import SwiftUI
 
 struct ContentView: View {
-    // Seed: AOT vs interpreter benchmark. `bench_tick` is the native (suppify/
-    // spinel AOT) top-level method registered by the picoruby-bench_tick mrbgem;
+    // Seed: interpreter vs AOT vs GPU benchmark. `bench_tick` is the native
+    // (suppify/spinel AOT) top-level method registered by picoruby-bench_tick;
     // `bench_tick_rb` is the identical kernel written in plain Ruby (interpreted
-    // baseline). Same inputs must give the same checksum (parity), then we time
-    // both with total work held constant while sweeping the per-call scope n, so
-    // the native call boundary cost amortizes as n grows.
+    // baseline); `gpu_bench_tick` (picoruby-gpu_bench, hand-written native gem)
+    // runs the same recurrence on the GPU (Metal), dispatching `k` independent
+    // parallel lanes in one call rather than being looped k times from Ruby.
+    // Same inputs must give the same checksum on all three (parity), then we
+    // time all three with total work held constant while sweeping the per-call
+    // scope n, so the native/GPU call boundary cost amortizes as n grows.
     @State private var source: String = """
     def bench_tick_rb(seed, n)
       s = seed & 0x7FFF
@@ -29,19 +32,21 @@ struct ContentView: View {
     NS = [1, 8, 64, 512, 4096]
     TOTAL = 1 << 20   # iterations per row, held constant across the sweep
 
-    puts "== parity (interp == AOT) =="
+    puts "== parity (interp == AOT == GPU) =="
     ok = true
     NS.each do |n|
       a = bench_tick_rb(SEED, n)
       b = bench_tick(SEED, n)
-      ok = false unless a == b
-      puts "n=#{n}\\trb=#{a}\\taot=#{b}\\t#{a == b ? 'OK' : 'MISMATCH'}"
+      c = gpu_bench_tick(SEED, n, 1)
+      row_ok = a == b && b == c
+      ok = false unless row_ok
+      puts "n=#{n}\\trb=#{a}\\taot=#{b}\\tgpu=#{c}\\t#{row_ok ? 'OK' : 'MISMATCH'}"
     end
     puts ok ? "parity: ALL OK" : "parity: FAILED"
     puts
 
     puts "== timing: total=#{TOTAL} iters/row =="
-    puts "n\\tinterp(s)\\taot(s)\\tspeedup"
+    puts "n\\tinterp(s)\\taot(s)\\tgpu(s)\\taot_x\\tgpu_x"
     NS.each do |n|
       k = TOTAL / n
       t0 = Time.now.to_f
@@ -50,8 +55,13 @@ struct ContentView: View {
       t1 = Time.now.to_f
       k.times { bench_tick(SEED, n) }
       ta = Time.now.to_f - t1
-      sp = ta > 0 ? (ti / ta) : 0
-      puts "#{n}\\t#{(ti).round(4)}\\t#{(ta).round(4)}\\t#{sp.round(1)}x"
+      # gpu_bench_tick dispatches k lanes in a single call, not a k-times loop.
+      t2 = Time.now.to_f
+      gpu_bench_tick(SEED, n, k)
+      tg = Time.now.to_f - t2
+      aot_x = ta > 0 ? (ti / ta) : 0
+      gpu_x = tg > 0 ? (ti / tg) : 0
+      puts "#{n}\\t#{ti.round(4)}\\t#{ta.round(4)}\\t#{tg.round(4)}\\t#{aot_x.round(1)}x\\t#{gpu_x.round(1)}x"
     end
     """
     @State private var output: String = ""
