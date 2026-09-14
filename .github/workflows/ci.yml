@@ -37,7 +37,7 @@ jobs:
           path: |
             build/host
             build/ios-repl-sim
-          key: build-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**', 'examples/ios/repl/aot-kernel/**') }}
+          key: build-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**', 'examples/ios/repl/aot-kernel/**', '.github/aot-pins.yml', 'rakelib/aot.rake', 'Rakefile') }}
 
       # Host-only: the bridge smoke test plus every example's standalone
       # test_*.rb. Seconds of runtime, so it belongs on every PR. The full
