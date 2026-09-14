@@ -50,6 +50,16 @@ MRuby::CrossBuild.new("ios-repl-device") do |conf|
   # The host mrbc tool is built by picoruby's build_mrbc_exec hook.
   conf.gem core: "mruby-compiler"
 
+  # suppify-generated AOT mrbgem: registers a native top-level `bench_tick`
+  # (no require needed under PICORB_VM_MRUBY). The interpreted baseline is
+  # defined in Ruby in the repl seed so the two can be benchmarked side by side.
+  conf.gem File.expand_path("../examples/ios/repl/picoruby-bench_tick", __dir__)
+
+  # Hand-written native mrbgem: runs the same bench_tick recurrence on the
+  # GPU (Metal), via the PicoGPUBenchDarwin Swift package linked at app link
+  # time (project.yml). Kernel.gpu_bench_tick, require-free like bench_tick.
+  conf.gem File.expand_path("../examples/ios/repl/picoruby-gpu_bench", __dir__)
+
   conf.gembox "mruby-posix"
   conf.gembox "core"
   conf.gembox "stdlib"

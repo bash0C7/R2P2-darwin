@@ -54,6 +54,11 @@ VM・Cブリッジ・ビルド設定はリポジトリのルート（`../../../b
 - `Sources/PicoRubyRunner-Bridging-Header.h` — CブリッジをSwiftへ公開する。
 - `project.yml` — xcodegenのプロジェクト定義。ブリッジのソースをコンパイルし、
   `Vendor/lib`に配置された`libmruby.a`へ`-lmruby`でリンクする。
+- `aot-kernel/bench_tick.{rb,rbs}` — AOTカーネル。インタプリタのベースラインと
+  ネイティブビルドの両方にとって唯一のソース。
+  [AOTネイティブカーネル](#aotネイティブカーネル)を参照。
+- `picoruby-bench_tick/` — 生成されるmrbgem。リポジトリには入っていません。
+  gitignoreしてあり、`aot-kernel/`から再生成します。
 
 `Vendor/`は`rake ios:lib`が生成するもので、ソースディレクトリではありません。
 
@@ -76,6 +81,41 @@ Team IDに置き換えてください。詳細は
 ```sh
 rake ios:device:all
 ```
+
+## AOTネイティブカーネル
+
+インタプリタと並べて、このexampleはRubyのメソッドを1つ、ビルドより前にネイティブ
+コードへコンパイルしたものとして走らせます。両者をベンチマークで突き合わせるため
+です。`bench_tick`（`aot-kernel/bench_tick.{rb,rbs}`）をmatzの
+[spinel](https://github.com/matz/spinel)がコンパイルし、
+[suppify](https://github.com/bash0C7/suppify)が`picoruby-bench_tick` mrbgemに
+包みます。
+
+`Sources/ContentView.swift`のseedはまずインタプリタ版とネイティブ版の結果が一致
+することを確かめ、それから呼び出し1回あたりのバッチ長`n`をスイープします。物理の
+iPhone 16eでは、1回の呼び出しに十分な計算を寄せてVM境界を越えるコスト（ディスパッチ、
+引数検査、spinelの`setjmp`）が薄まると、ネイティブ版が約50倍に達します。インタプリタ
+版はスイープを通してほぼ横ばいです。
+
+### gemを再生成する
+
+`picoruby-bench_tick/`は**リポジトリに入っていません**。gitignoreしてあり、カーネルの
+ソースから再生成します。`vendor/picoruby`をvendorせずfetchするのと同じ扱いです。
+spinelとsuppifyのバージョンが同じなら生成は決定論的なので、このgemはソースではなく
+ビルド生成物です。
+
+spinelとsuppifyは外部ツールで、コンパイラを探すのと同じ要領で場所を渡します。
+
+```sh
+cd examples/ios/repl/aot-kernel
+SPINEL=/path/to/spinel/spinel SPINEL_LIB=/path/to/spinel/lib \
+  ruby /path/to/suppify/suppify.rb bench_tick.rb -o bench_tick -t picoruby -d ..
+#   -> ../picoruby-bench_tick/
+```
+
+`rake ios:repl:lib`はビルド設定の`conf.gem` 1行でこのgemをリンクするので、ビルド前に
+再生成しておいてください。適用と組み込みの完全な手順は、自分のメソッドに適用する
+やり方も含めて`aot-embed` skill（`.claude/skills/aot-embed/`）にあります。
 
 ## 使えるRubyの範囲
 

@@ -1,0 +1,6 @@
+# Single source of truth for the spinel/suppify commits this repo's AOT
+# kernels (examples/ios/*/aot-kernel/) are verified against. Read by
+# `rake aot:*` (Rakefile / rakelib/aot.rake) and by .github/workflows/ci.yml —
+# never hardcode either ref anywhere else.
+spinel: d0feb62097427ede7ae2309bea2928404f5e48bb
+suppify: 8d299a4ddedce5729bbdc323a2d28f838ccd34c3

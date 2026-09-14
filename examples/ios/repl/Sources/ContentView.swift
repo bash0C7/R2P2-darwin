@@ -1,7 +1,69 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var source: String = "puts \"hello #{1 + 2}\""
+    // Seed: interpreter vs AOT vs GPU benchmark. `bench_tick` is the native
+    // (suppify/spinel AOT) top-level method registered by picoruby-bench_tick;
+    // `bench_tick_rb` is the identical kernel written in plain Ruby (interpreted
+    // baseline); `gpu_bench_tick` (picoruby-gpu_bench, hand-written native gem)
+    // runs the same recurrence on the GPU (Metal), dispatching `k` independent
+    // parallel lanes in one call rather than being looped k times from Ruby.
+    // Same inputs must give the same checksum on all three (parity), then we
+    // time all three with total work held constant while sweeping the per-call
+    // scope n, so the native/GPU call boundary cost amortizes as n grows.
+    @State private var source: String = """
+    def bench_tick_rb(seed, n)
+      s = seed & 0x7FFF
+      y1 = 0; y2 = 0; ema = 0; sum = 0; i = 0
+      while i < n
+        s = (s * 75 + 74) & 0x7FFF
+        x = s - 16384
+        ema = ema + ((x - ema) >> 1)
+        y = ((31000 * y1 - 15500 * y2) >> 14) + (ema >> 2)
+        y = 32767 if y > 32767
+        y = -32767 if y < -32767
+        y2 = y1; y1 = y
+        sum = ((sum * 31) ^ (y & 0x7FFF)) & 0x7FFF
+        i += 1
+      end
+      (sum << 15) | s
+    end
+
+    SEED = 12345
+    NS = [1, 8, 64, 512, 4096]
+    TOTAL = 1 << 20   # iterations per row, held constant across the sweep
+
+    puts "== parity (interp == AOT == GPU) =="
+    ok = true
+    NS.each do |n|
+      a = bench_tick_rb(SEED, n)
+      b = bench_tick(SEED, n)
+      c = gpu_bench_tick(SEED, n, 1)
+      row_ok = a == b && b == c
+      ok = false unless row_ok
+      puts "n=#{n}\\trb=#{a}\\taot=#{b}\\tgpu=#{c}\\t#{row_ok ? 'OK' : 'MISMATCH'}"
+    end
+    puts ok ? "parity: ALL OK" : "parity: FAILED"
+    puts
+
+    puts "== timing: total=#{TOTAL} iters/row =="
+    puts "n\\tinterp(s)\\taot(s)\\tgpu(s)\\taot_x\\tgpu_x"
+    NS.each do |n|
+      k = TOTAL / n
+      t0 = Time.now.to_f
+      k.times { bench_tick_rb(SEED, n) }
+      ti = Time.now.to_f - t0
+      t1 = Time.now.to_f
+      k.times { bench_tick(SEED, n) }
+      ta = Time.now.to_f - t1
+      # gpu_bench_tick dispatches k lanes in a single call, not a k-times loop.
+      t2 = Time.now.to_f
+      gpu_bench_tick(SEED, n, k)
+      tg = Time.now.to_f - t2
+      aot_x = ta > 0 ? (ti / ta) : 0
+      gpu_x = tg > 0 ? (ti / tg) : 0
+      puts "#{n}\\t#{ti.round(4)}\\t#{ta.round(4)}\\t#{tg.round(4)}\\t#{aot_x.round(1)}x\\t#{gpu_x.round(1)}x"
+    end
+    """
     @State private var output: String = ""
     @FocusState private var editorFocused: Bool
 

@@ -1,0 +1,3 @@
+# suppify-generated native mrbgem — a reproducible build product, not source.
+# Regenerate from aot-kernel/bench_tick.{rb,rbs} with spinel + suppify.
+picoruby-bench_tick/

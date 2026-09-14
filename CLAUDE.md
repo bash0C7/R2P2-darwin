@@ -52,6 +52,11 @@ source of truth。**このファイルにはREADMEに書いていないことだ
   「picorubyのSHA + build_configのdigest」を記録し、一致しなければdirごと捨てて再buildする。
   stampを回避してbuildするpath（`recompile_arm64_32.rb` の直接起動など）を足すときは、
   stampの更新も一緒に足す
+- **AOTカーネル(`examples/ios/*/aot-kernel/`)のspinel/suppify pinは`.github/aot-pins.yml`が
+  単一source of truth。** 個別のci.yml stepやRakefileにrefをハードコードしない。追従・更新は
+  `rake aot:*`（`rakelib/aot.rake`）と`aot-pin-refresh` skill(`.claude/skills/aot-pin-refresh/`)
+  の役割。suppify自身のspinel pin追従は別repo(`~/dev/src/github.com/bash0C7/suppify`)の
+  `spinel-tracking` skillが先に完了している必要がある
 - **各exampleのSimulator用とdevice用のlibmruby.aは同じ `Vendor/lib/libmruby.a` を共有する。**
   `lib` taskと `device:lib` taskは同じpathへ上書きし合い、guardが無い。`ld` はarch違いの
   static archiveをerrorにせず黙ってskipするので、片方のarchが刺さったままでも

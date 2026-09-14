@@ -3,6 +3,12 @@ options:
   bundleIdPrefix: com.bash0c7.picoruby
   deploymentTarget:
     iOS: "26.0"   # Liquid Glass (SwiftUI .glass / .glassProminent, glassEffect) — no availability shims
+packages:
+  # The Darwin (Metal) GPU backend for picoruby-gpu_bench. Its pgpu_bench_*
+  # C symbols resolve the undefined references in the staged libmruby.a at
+  # app link — same convention as PicoTorchDarwin in the torch example.
+  PicoGPUBenchDarwin:
+    path: picoruby-gpu_bench/ports/darwin/ext
 targets:
   PicoRubyRunner:
     type: application
@@ -14,6 +20,11 @@ targets:
           - "picoruby_bridge.c"
           - "picoruby_bridge.h"
           - "task_hal_ios.c"
+    dependencies:
+      # Dynamic Swift-package product: link AND embed so dyld can resolve
+      # the pgpu_bench_* symbols (the framework lands in the app's Frameworks/).
+      - package: PicoGPUBenchDarwin
+        embed: true
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: Sources/PicoRubyRunner-Bridging-Header.h

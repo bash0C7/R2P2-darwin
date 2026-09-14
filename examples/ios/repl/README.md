@@ -55,6 +55,11 @@ The VM, the C bridge, and the build configs live at the repository root
 - `Sources/PicoRubyRunner-Bridging-Header.h` — exposes the C bridge to Swift.
 - `project.yml` — the xcodegen project: compiles the bridge sources and links
   `-lmruby` against the staged `libmruby.a` under `Vendor/lib`.
+- `aot-kernel/bench_tick.{rb,rbs}` — the AOT kernel: one source of truth for
+  both the interpreted baseline and the native build. See
+  [AOT native kernel](#aot-native-kernel).
+- `picoruby-bench_tick/` — the generated mrbgem. Not in the tree; it is
+  gitignored and regenerated from `aot-kernel/`.
 
 `Vendor/` is produced by `rake ios:lib` and is not a source directory.
 
@@ -77,6 +82,44 @@ Before the first on-device build, replace `DEVELOPMENT_TEAM: YOUR_TEAM_ID` in
 ```sh
 rake ios:device:all
 ```
+
+## AOT native kernel
+
+Alongside the interpreter, this example runs one Ruby method as native code
+compiled ahead of the build, so the two can be benchmarked against each other.
+`bench_tick` (`aot-kernel/bench_tick.{rb,rbs}`) is compiled by matz's
+[spinel](https://github.com/matz/spinel) and wrapped into the
+`picoruby-bench_tick` mrbgem by
+[suppify](https://github.com/bash0C7/suppify).
+
+The seed in `Sources/ContentView.swift` first checks that the interpreted and
+native versions agree, then sweeps the per-call batch size `n`. On a physical
+iPhone 16e the native version reaches roughly 50× once each call does enough
+work to amortize the cost of crossing the VM boundary — dispatch, argument
+check, and spinel's `setjmp`. The interpreter stays roughly flat across the
+sweep.
+
+### Regenerating the gem
+
+`picoruby-bench_tick/` is **not in the repository**. It is gitignored and
+regenerated from the kernel source, the same way `vendor/picoruby` is fetched
+rather than vendored. Generation is deterministic for a given spinel and suppify
+version, so the gem is a build product, not source.
+
+spinel and suppify are external tools, located the way you would locate a
+compiler:
+
+```sh
+cd examples/ios/repl/aot-kernel
+SPINEL=/path/to/spinel/spinel SPINEL_LIB=/path/to/spinel/lib \
+  ruby /path/to/suppify/suppify.rb bench_tick.rb -o bench_tick -t picoruby -d ..
+#   -> ../picoruby-bench_tick/
+```
+
+`rake ios:repl:lib` links the gem in through one `conf.gem` line in the build
+config, so regenerate it before building. The full apply-and-embed procedure —
+including how to do this for a method of your own — is in the `aot-embed` skill
+(`.claude/skills/aot-embed/`).
 
 ## What Ruby is available
 

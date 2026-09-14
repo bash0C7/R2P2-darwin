@@ -37,7 +37,7 @@ jobs:
           path: |
             build/host
             build/ios-repl-sim
-          key: build-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**') }}
+          key: build-${{ steps.picoruby.outputs.sha }}-${{ hashFiles('build_config/**', 'bridge/**', 'examples/ios/repl/aot-kernel/**') }}
 
       # Host-only: the bridge smoke test plus every example's standalone
       # test_*.rb. Seconds of runtime, so it belongs on every PR. The full
@@ -46,8 +46,25 @@ jobs:
       - name: Unit tests + bridge smoke test (host build)
         run: rake regress:unit
 
-      # ios:build declares no dependency on ios:gen, so run the three
-      # pipeline steps explicitly in order. Device/signing tasks can't run
-      # on a runner and are exercised locally instead.
-      - name: iOS Simulator build (repl example)
-        run: rake ios:lib ios:gen ios:build
+      # Every AOT kernel (examples/ios/*/aot-kernel/*.rb) is regenerated from
+      # source against the spinel/suppify commits pinned in .github/aot-pins.yml
+      # — the generated picoruby-<kernel>/ gem is a build product, not
+      # committed. `rake aot:refresh` is the single source of truth for this
+      # pipeline (clone+build spinel, checkout suppify, regenerate every
+      # kernel, Simulator-build every example that has one); see rakelib/aot.rake.
+      - name: Load AOT pins
+        id: aotpins
+        run: |
+          ruby -ryaml -e '
+            pins = YAML.load_file(".github/aot-pins.yml")
+            File.open(ENV["GITHUB_OUTPUT"], "a") { |f| f.puts "spinel=#{pins["spinel"]}" }
+          '
+
+      - name: Cache spinel build
+        uses: actions/cache@v6
+        with:
+          path: build/aot/spinel
+          key: spinel-${{ steps.aotpins.outputs.spinel }}
+
+      - name: AOT pin refresh (regenerate kernels, Simulator build)
+        run: rake aot:refresh

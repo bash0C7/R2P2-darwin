@@ -330,6 +330,32 @@ gemを足します。`virtual-peripheral`と`stackchan`で`Array#pack`が使え�
 `iphone-torch`では使えないのはそのためです。exampleに新しいRubyを載せるときは、
 実機で頼る前に`rake smoke`のホストビルドで試してください。
 
+### ホットなメソッドを事前コンパイルする
+
+ここまではすべてインタプリタ実行です。起動時にprismが`app.rb`をコンパイルし、VMが
+それを走らせます。割に合うだけホットなメソッドは、代わりにビルド前にネイティブ
+コードへコンパイルできます。matzのspinel AOTコンパイラでコンパイルし、
+[suppify](https://github.com/bash0C7/suppify)でPicoRubyのmrbgemに包んで、他のgemと
+同じようにリンクします。
+
+インタプリタ版はA/Bのベースラインとしてツリーに残り、`app.rb`はどちらでも同じ
+メソッド名で呼びます。full-mruby VMでは生成されたgemがVMを開くときに
+`kernel_module`へ登録されるので、足すべき`require`はありません。
+
+[repl example](examples/ios/repl/README_jp.md#aotとインタプリタ)に実証済みの
+ベンチカーネルが`aot-kernel/`以下に入っています。物理のiPhone 16eでは、1回の
+呼び出しに十分な計算を寄せて境界を越えるコストが薄まると、ネイティブ版がインタ
+プリタの約50倍に達します。
+
+生成されるgemはツリーに入っていません。ビルド前にRubyのソースから再生成します。
+`vendor/picoruby`をvendorせずfetchするのと同じ扱いです。これを自分のメソッドに
+適用する手順は`aot-embed` skill（`.claude/skills/aot-embed/`）にあります。
+
+全AOTカーネルが検証済みのspinel/suppify commitの組は`.github/aot-pins.yml`に
+pinされ、`rake aot:refresh`（CIも同じタスクを実行）で強制されます。このpinの
+更新・不通時の調査は`aot-pin-refresh` skill（`.claude/skills/aot-pin-refresh/`）
+の役割です。
+
 ## vendorの取得元
 
 既定の取得元は[bash0C7/picoruby](https://github.com/bash0C7/picoruby)の

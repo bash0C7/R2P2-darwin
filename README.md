@@ -338,6 +338,33 @@ reduced set adds gems there rather than to anything shared. That is why
 cannot. When you bundle new Ruby into an example, try it against `rake smoke`'s
 host build before relying on it on a device.
 
+### Compiling a hot method ahead of time
+
+Everything above runs interpreted: prism compiles `app.rb` at launch and the VM
+executes it. A method that is hot enough to be worth it can instead be compiled
+to native code before the build, with matz's spinel AOT compiler, wrapped into a
+PicoRuby mrbgem by [suppify](https://github.com/bash0C7/suppify) and linked in
+like any other gem.
+
+The interpreted original stays in the tree as the A/B baseline, and `app.rb`
+calls the same method name either way — on the full-mruby VM the generated gem
+registers on `kernel_module` when the VM opens, so there is no `require` to add.
+
+The [repl example](examples/ios/repl/README.md#aot-native-kernel) carries a
+worked benchmark kernel under `aot-kernel/`. On a physical iPhone 16e the native
+version reaches roughly 50× the interpreter once each call does enough work to
+amortize the cost of crossing the boundary.
+
+The generated gem is not in the tree. It is regenerated from its Ruby source
+before the build, the same way `vendor/picoruby` is fetched rather than
+vendored. The step-by-step procedure for applying this to a method of your own
+lives in the `aot-embed` skill (`.claude/skills/aot-embed/`).
+
+The exact spinel/suppify commit pair every AOT kernel is verified against is
+pinned in `.github/aot-pins.yml` and enforced by `rake aot:refresh` (also what
+CI runs). Advancing that pin, and diagnosing a pin that stopped working, is the
+`aot-pin-refresh` skill (`.claude/skills/aot-pin-refresh/`).
+
 ## Vendor source
 
 The default source is the `port-darwin` branch of
