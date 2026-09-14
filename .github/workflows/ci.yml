@@ -46,49 +46,25 @@ jobs:
       - name: Unit tests + bridge smoke test (host build)
         run: rake regress:unit
 
-      # The repl example's AOT kernel gem (examples/ios/repl/picoruby-bench_tick)
-      # is a regenerated build product, not committed. Rebuild it from
-      # aot-kernel/bench_tick.{rb,rbs} with spinel + suppify — external tools,
-      # cloned ephemerally the way `cc` lives on PATH — before ios:lib wires it
-      # in. Both are pinned to a verified-compatible commit pair: this suppify
-      # against this spinel regenerates the exact gem verified on device.
-      - name: Clone spinel + suppify (pinned)
-        env:
-          SUPPIFY_REF: 8d299a4ddedce5729bbdc323a2d28f838ccd34c3
+      # Every AOT kernel (examples/ios/*/aot-kernel/*.rb) is regenerated from
+      # source against the spinel/suppify commits pinned in .github/aot-pins.yml
+      # — the generated picoruby-<kernel>/ gem is a build product, not
+      # committed. `rake aot:refresh` is the single source of truth for this
+      # pipeline (clone+build spinel, checkout suppify, regenerate every
+      # kernel, Simulator-build every example that has one); see rakelib/aot.rake.
+      - name: Load AOT pins
+        id: aotpins
         run: |
-          git clone --quiet https://github.com/bash0C7/suppify.git build/aot/suppify
-          git -C build/aot/suppify checkout --quiet "$SUPPIFY_REF"
+          ruby -ryaml -e '
+            pins = YAML.load_file(".github/aot-pins.yml")
+            File.open(ENV["GITHUB_OUTPUT"], "a") { |f| f.puts "spinel=#{pins["spinel"]}" }
+          '
 
       - name: Cache spinel build
-        id: spinel-cache
         uses: actions/cache@v6
         with:
           path: build/aot/spinel
-          key: spinel-d0feb62097427ede7ae2309bea2928404f5e48bb
+          key: spinel-${{ steps.aotpins.outputs.spinel }}
 
-      - name: Build spinel
-        if: steps.spinel-cache.outputs.cache-hit != 'true'
-        env:
-          SPINEL_REF: d0feb62097427ede7ae2309bea2928404f5e48bb
-        run: |
-          git clone --quiet https://github.com/matz/spinel.git build/aot/spinel
-          git -C build/aot/spinel checkout --quiet "$SPINEL_REF"
-          make -C build/aot/spinel deps
-          make -C build/aot/spinel
-
-      - name: Regenerate AOT gem (spinel + suppify)
-        working-directory: examples/ios/repl/aot-kernel
-        env:
-          SPINEL: ${{ github.workspace }}/build/aot/spinel/bin/spinel
-          SPINEL_LIB: ${{ github.workspace }}/build/aot/spinel/lib
-          BUNDLE_GEMFILE: ${{ github.workspace }}/build/aot/suppify/Gemfile
-        run: |
-          bundle install
-          bundle exec ruby "$GITHUB_WORKSPACE/build/aot/suppify/suppify.rb" \
-            bench_tick.rb -o bench_tick -t picoruby -d ..
-
-      # ios:build declares no dependency on ios:gen, so run the three
-      # pipeline steps explicitly in order. Device/signing tasks can't run
-      # on a runner and are exercised locally instead.
-      - name: iOS Simulator build (repl example)
-        run: rake ios:lib ios:gen ios:build
+      - name: AOT pin refresh (regenerate kernels, Simulator build)
+        run: rake aot:refresh

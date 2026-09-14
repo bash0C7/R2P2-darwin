@@ -360,6 +360,11 @@ before the build, the same way `vendor/picoruby` is fetched rather than
 vendored. The step-by-step procedure for applying this to a method of your own
 lives in the `aot-embed` skill (`.claude/skills/aot-embed/`).
 
+The exact spinel/suppify commit pair every AOT kernel is verified against is
+pinned in `.github/aot-pins.yml` and enforced by `rake aot:refresh` (also what
+CI runs). Advancing that pin, and diagnosing a pin that stopped working, is the
+`aot-pin-refresh` skill (`.claude/skills/aot-pin-refresh/`).
+
 ## Vendor source
 
 The default source is the `port-darwin` branch of

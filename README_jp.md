@@ -351,6 +351,11 @@ gemを足します。`virtual-peripheral`と`stackchan`で`Array#pack`が使え�
 `vendor/picoruby`をvendorせずfetchするのと同じ扱いです。これを自分のメソッドに
 適用する手順は`aot-embed` skill（`.claude/skills/aot-embed/`）にあります。
 
+全AOTカーネルが検証済みのspinel/suppify commitの組は`.github/aot-pins.yml`に
+pinされ、`rake aot:refresh`（CIも同じタスクを実行）で強制されます。このpinの
+更新・不通時の調査は`aot-pin-refresh` skill（`.claude/skills/aot-pin-refresh/`）
+の役割です。
+
 ## vendorの取得元
 
 既定の取得元は[bash0C7/picoruby](https://github.com/bash0C7/picoruby)の
