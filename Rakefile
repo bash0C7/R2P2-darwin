@@ -23,7 +23,12 @@ def build_stamp(config_basename)
         else
           ""
         end
-  Digest::SHA256.hexdigest("#{sha}\n#{Digest::SHA256.file(cfg).hexdigest}")
+  # A build_config can also take a gem from STACKCHAN_DRB_BLE_GEMDIR, so that
+  # gem's sources are part of what the build was made from.
+  gemdir = ENV["STACKCHAN_DRB_BLE_GEMDIR"].to_s
+  gem_digest = Dir[File.join(gemdir, "**", "*")].sort.select { |p| File.file?(p) }
+                 .map { |p| "#{p}:#{Digest::SHA256.file(p).hexdigest}" }.join("\n")
+  Digest::SHA256.hexdigest("#{sha}\n#{Digest::SHA256.file(cfg).hexdigest}\n#{gemdir}\n#{gem_digest}")
 end
 
 # mruby's compile rule rebuilds an object only when its .c is newer, so a

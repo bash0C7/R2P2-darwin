@@ -78,7 +78,12 @@ MRuby::CrossBuild.new("watchos-stackchan-device") do |conf|
   # dRuby over BLE: picoruby-drb (Marshal and the DRb message layer; it also
   # pulls in picoruby-socket and picoruby-net-websocket) and the drbble://
   # transport from stackchan-picoruby. app.rb requires "drb-ble" and sends text
-  # frames when it is missing.
+  # frames when it is missing. STACKCHAN_DRB_BLE_GEMDIR points at a checkout
+  # (stackchan-picoruby trial:darwin builds against the commit under trial).
   conf.gem core: "picoruby-drb"
-  conf.gem github: "bash0C7/stackchan-picoruby", branch: "main", path: "mrbgems/picoruby-drb-ble"
+  if ENV["STACKCHAN_DRB_BLE_GEMDIR"]
+    conf.gem gemdir: ENV["STACKCHAN_DRB_BLE_GEMDIR"]
+  else
+    conf.gem github: "bash0C7/stackchan-picoruby", branch: "main", path: "mrbgems/picoruby-drb-ble"
+  end
 end
