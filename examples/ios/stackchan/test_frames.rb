@@ -128,6 +128,14 @@ expect("parse_ack error", FrameCodec.parse_ack("?"), :error)
 expect("parse_touch zone 2", FrameCodec.parse_touch("<touch:2>\n"), 2)
 expect("parse_touch non-touch", FrameCodec.parse_touch("<F:1>\n"), nil)
 
+# decode_pairs inverts encode_pairs: the dRuby path sends these pairs to the
+# robot's Remote#command instead of the frame text.
+expect("decode face", FrameCodec.decode_pairs(FrameCodec.encode_face("joy")), { "F" => "2" })
+expect("decode head", FrameCodec.decode_pairs(FrameCodec.encode_head(yaw_left: 50, pitch_up: 30, time_ms: 500)),
+       { "YL" => "50", "PU" => "30", "T" => "500" })
+expect("decode led", FrameCodec.decode_pairs(FrameCodec.encode_led(color: "red", side: "left", mode: "blink")),
+       { "L" => "1", "R" => "255", "G" => "0", "B" => "0", "S" => "R", "M" => "b" })
+
 if $failures.zero?
   puts "\nall passed"
 else

@@ -108,4 +108,11 @@ MRuby::CrossBuild.new("watchos-stackchan-sim") do |conf|
   # "wrong number of arguments"). The mbedtls / rng darwin ports build for
   # watchOS (SecRandomCopyBytes entropy; the app links -framework Security).
   conf.gem ble_gemdir
+
+  # dRuby over BLE: picoruby-drb (Marshal and the DRb message layer; it also
+  # pulls in picoruby-socket and picoruby-net-websocket) and the drbble://
+  # transport from stackchan-picoruby. app.rb requires "drb-ble" and sends text
+  # frames when it is missing.
+  conf.gem core: "picoruby-drb"
+  conf.gem github: "bash0C7/stackchan-picoruby", branch: "main", path: "mrbgems/picoruby-drb-ble"
 end
