@@ -143,8 +143,7 @@ module FrameCodec
     chunks
   end
 
-  # "<K:V,K:V>\n" -> { "K" => "V", ... }: the pairs encode_pairs was given.
-  # Values never carry "," (encode_text widens it); a ":" stays in the value.
+  # "<K:V,K:V>\n" -> { "K" => "V" }
   def self.decode_pairs(frame)
     pairs = {}
     frame.chomp[1..-2].split(",").each do |kv|
@@ -214,30 +213,17 @@ rescue LoadError
   # host CRuby / a VM without picoruby-ble: BLE_AVAILABLE resolves below
 end
 
-# dRuby over BLE (stackchan-picoruby's picoruby-drb-ble). When the robot's
-# firmware exposes the second characteristic pair next to NUS, each command
-# frame becomes one call on its StackchanApp::Remote, which answers with the
-# lines the text link would have notified; otherwise frames go out as text.
+# Commands go to the robot's StackchanApp::Remote over dRuby-over-BLE
+# (stackchan-picoruby's picoruby-drb-ble).
 begin
   require "drb-ble"
 rescue LoadError
-  # host CRuby / a VM without picoruby-drb-ble: DRB_AVAILABLE resolves below
 end
-
-DRB_AVAILABLE =
-  begin
-    DRbBle
-    true
-  rescue NameError
-    false
-  end
 
 DRB_RX_CHAR_UUID128_HEX = "6e400004b5a3f393e0a9e50e24dcca9e"
 DRB_TX_CHAR_UUID128_HEX = "6e400005b5a3f393e0a9e50e24dcca9e"
 CCCD_UUID128_HEX        = "0000290200001000800000805f9b34fb"
 DRB_URI                 = "drbble://stackchan"
-DRB_CHUNK_PACE_MS       = 20    # unpaced back-to-back writes are silently cut
-DRB_SUBSCRIBE_SETTLE_MS = 200
 
 # Is the picoruby-ble `BLE` class linked into this VM? The reduced PicoRuby VM
 # (prism compiler) does not implement the `defined?` keyword — it compiles
@@ -335,25 +321,20 @@ if BLE_AVAILABLE
 
     attr_accessor :on_notification
 
-    # _event_popped first: on the darwin port it is the only place a packet
-    # moves from the Swift FIFO into @event_queue.
+    # _event_popped first: on the darwin port it moves a packet into @event_queue.
     def pop_and_dispatch
       _event_popped
       event = @event_queue.pop(timeout_ms: 0)
-      return nil unless event
       packet_callback(event) if event.is_a?(String)
       event
     end
 
-    # The darwin port synthesizes GATT_EVENT_NOTIFICATION; ble_central.rb
-    # leaves it undecoded.
     def packet_callback(event_packet)
       super
-      return unless event_packet.getbyte(0) == GATT_EVENT_NOTIFICATION
+      return unless event_packet.getbyte(0) == GATT_EVENT_NOTIFICATION && @on_notification
       handle = BLE::Utils.little_endian_to_int16(event_packet.byteslice(4, 1))
       len    = BLE::Utils.little_endian_to_int16(event_packet.byteslice(6, 1))
-      cb = @on_notification
-      cb.call(handle, event_packet.byteslice(8, len)) if cb
+      @on_notification.call(handle, event_packet.byteslice(8, len))
     end
   end
 
@@ -362,15 +343,8 @@ if BLE_AVAILABLE
     def initialize
       @ble = StackchanCentral.new
       @rx_value_handle = nil
-      @drb_rx = nil
-      @drb_tx = nil
-      @drb_cccd = nil
       @drb_inbox = []
-      @drb_paced = false
-      @remote = nil
-      @ble.on_notification = lambda do |handle, value|
-        @drb_inbox << value if handle == @drb_tx
-      end
+      @ble.on_notification = ->(handle, value) { @drb_inbox << value if handle == @drb_tx }
       @pending = []
     end
 
@@ -416,8 +390,10 @@ if BLE_AVAILABLE
         print frame
         return :pending
       end
-      # <A:N> opens the half-duplex audio stream on the text link, so it stays text.
-      return remote_write(frame) if drb? && !frame.start_with?("<A:")
+      unless frame.start_with?("<A:")
+        @remote.command(FrameCodec.decode_pairs(frame)).each { |line| print line }
+        return :ok
+      end
       @ble.write_value_of_characteristic_without_response(
         @ble.conn_handle, @rx_value_handle, frame
       )
@@ -435,22 +411,15 @@ if BLE_AVAILABLE
       :ok
     end
 
-    def drb?
-      !@remote.nil? && connected?
-    end
-
-    # DRbBle link port: one write per chunk, paced; notifications come back
-    # through pop_and_dispatch.
+    # DRbBle link: one paced write per chunk; replies arrive as notifications.
     def send_chunk(bytes)
-      msleep(DRB_CHUNK_PACE_MS) if @drb_paced
       @ble.write_value_of_characteristic_without_response(@ble.conn_handle, @drb_rx, bytes)
-      @drb_paced = true
+      msleep(20)
     end
 
     def poll
-      @drb_paced = false
       while @drb_inbox.empty?
-        return nil unless @ble.pop_and_dispatch
+        break unless @ble.pop_and_dispatch
       end
       @drb_inbox.shift
     end
@@ -471,45 +440,21 @@ if BLE_AVAILABLE
       end
     end
 
-    # The dRuby pair, when the firmware has it: bind, subscribe, register the
-    # drbble:// link and keep a DRbObject for the Remote.
     def bind_drb
-      return unless DRB_AVAILABLE
       @ble.services.each do |service|
-        next unless uuid128_hex(service[:uuid128]) == NUS_SERVICE_UUID128_HEX
         service[:characteristics].each do |chara|
           hex = uuid128_hex(chara[:uuid128])
           @drb_rx = chara[:value_handle] if hex == DRB_RX_CHAR_UUID128_HEX
-          if hex == DRB_TX_CHAR_UUID128_HEX
-            @drb_tx = chara[:value_handle]
-            chara[:descriptors].each do |d|
-              @drb_cccd = d[:handle] if uuid128_hex(d[:uuid128]) == CCCD_UUID128_HEX
-            end
-          end
+          next unless hex == DRB_TX_CHAR_UUID128_HEX
+          @drb_tx = chara[:value_handle]
+          cccd = chara[:descriptors].find { |d| uuid128_hex(d[:uuid128]) == CCCD_UUID128_HEX }
+          @ble.write_characteristic_descriptor_using_descriptor_handle(@ble.conn_handle, cccd[:handle], "\x01\x00")
         end
       end
-      return unless @drb_rx && @drb_tx && @drb_cccd
-      @ble.write_characteristic_descriptor_using_descriptor_handle(@ble.conn_handle, @drb_cccd, "\x01\x00")
-      waited = 0
-      while waited < DRB_SUBSCRIBE_SETTLE_MS
-        @ble.pop_and_dispatch
-        msleep(20)
-        waited += 20
-      end
-      DRbBle.register(DRB_URI, self, timeout_ms: 3000)
+      10.times { @ble.pop_and_dispatch; msleep(20) }
+      DRbBle.register(DRB_URI, self)
       @remote = DRb::DRbObject.new_with_uri(DRB_URI)
       print "dRuby over BLE: on\n"
-    end
-
-    # One command frame as one Remote call; a failure falls back to text.
-    def remote_write(frame)
-      @remote.command(FrameCodec.decode_pairs(frame)).each { |line| print line }
-      :ok
-    rescue => e
-      print "dRuby failed (#{e.class}: #{e.message}); sent as text\n"
-      @ble.write_value_of_characteristic_without_response(@ble.conn_handle, @rx_value_handle, frame)
-      print frame
-      :ok
     end
 
     # 16 bytes (big-endian as stored in :uuid128) -> lowercase hex String.
