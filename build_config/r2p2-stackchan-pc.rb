@@ -1,13 +1,10 @@
 # Darwin host build for the StackChan PC-side daemon/CLI written in PicoRuby:
-# the darwin-ble gem set (CoreBluetooth central; its networking gembox already
-# provides picoruby-drb/socket) + the shared StackChan layer gem
-# (picoruby-stackchan-shared), which lives outside the picoruby tree and is
-# pulled in by absolute gemdir (path below).
+# the darwin-ble gem set (CoreBluetooth central; its networking gembox
+# provides picoruby-drb/socket).
 #
 # Build:
 #   MRUBY_CONFIG=$(pwd)/build_config/r2p2-stackchan-pc.rb rake setup macos:build
-# Produces ./build/host/bin/{r2p2,picoruby} with the shared layer compiled in
-# (Stackchan::BLE / Stackchan::AI available without `load`).
+# Produces ./build/host/bin/{r2p2,picoruby}.
 
 MRuby::Build.new do |conf|
   conf.toolchain :gcc
@@ -38,5 +35,4 @@ MRuby::Build.new do |conf|
   conf.gem core: "picoruby-bin-r2p2"
   conf.gem core: "picoruby-ble"
   conf.gem core: "picoruby-picotest"
-  conf.gem gemdir: "/Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/mrbgems/picoruby-stackchan-shared"
 end
