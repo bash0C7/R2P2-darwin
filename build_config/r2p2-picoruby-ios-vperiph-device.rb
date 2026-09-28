@@ -58,8 +58,7 @@ MRuby::CrossBuild.new("ios-vperiph-device") do |conf|
   # NoMethodError (not LoadError) without it, slipping past ble.rb's
   # rescue LoadError and silently skipping the whole BLE Ruby layer at
   # mrb_open (class BLE then exists C-only: no constants, no scan).
-  # Array#pack / sprintf are the runtime users. Same trio as the
-  # stackchan configs.
+  # Array#pack / sprintf are the runtime users.
   mruby_mrbgems = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
   conf.gem gemdir: "#{mruby_mrbgems}/mruby-string-ext"
   conf.gem gemdir: "#{mruby_mrbgems}/mruby-pack"

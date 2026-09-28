@@ -155,10 +155,8 @@ iOS / watchOSのexampleはいずれもSwiftUIアプリで、振る舞いは`app.
 | [ios/networking](examples/ios/networking/README_jp.md) | `ios:net` | picoruby-socketのdarwin port経由の`Net::HTTP` — TLSはmbedTLS、`URLSession`もOpenSSLも使わない |
 | [ios/virtual-peripheral](examples/ios/virtual-peripheral/README_jp.md) | `ios:vperiph` | CoreBluetooth上でRubyが書くBLE GATTペリフェラル |
 | [ios/iphone-torch](examples/ios/iphone-torch/README_jp.md) | `ios:torch` | iPhone版の「Lチカ」。ライトをRubyのループで点滅させる |
-| [ios/stackchan](examples/ios/stackchan/README_jp.md) | `ios:stackchan` | NUS経由で[Stack-chan](https://github.com/meganetaaan/stack-chan)を操るBLEセントラル |
 | [ios/tilt-synth](examples/ios/tilt-synth/README_jp.md) | `ios:tiltsynth` | Device MotionからFM音源へ。音楽的マッピングはRuby側 |
 | [watchos/led-toggle](examples/watchos/led-toggle/README_jp.md) | `watchos:led` | Apple Watch（`arm64_32`）上で動くRubyの状態機械 |
-| [watchos/stackchan](examples/watchos/stackchan/README_jp.md) | `watchos:stackchan` | 腕の上のStack-chan操作アプリ。RubyのBLEセントラル、watch単体 |
 | [macos/ls](examples/macos/ls/README_jp.md) | — | `rake macos:single`のデモスクリプト |
 | [macos/ble-subscribe](examples/macos/ble-subscribe/README_jp.md) | — | MacをBLE centralにしてperipheralのnotificationを受け取る |
 
@@ -177,6 +175,41 @@ rake ios:torch:device:check   # 署名なしで generic device 向けにリン�
 ```
 
 全タスクとその説明は`rake -T`で一覧できます。
+
+## 別リポジトリのアプリをビルドする
+
+アプリは本リポジトリの外に置き、R2P2-darwinをプラットフォーム（bridge、vendorの
+picoruby、ビルドヘルパー）としてだけ使えます。`ios:app:*`と`watchos:app:*`が
+そのアプリをビルドします。呼び出し側リポジトリのRakefileが環境変数を設定し、
+ここのタスクを起動します。
+
+```sh
+rake ios:app:{lib,gen,build,run,all,observe}
+rake ios:app:device:{lib,build,check,run,all}
+rake watchos:app:{lib,gen,build,run,all}
+rake watchos:app:device:{lib,build,check,run,all}
+```
+
+| 変数 | 意味 |
+|---|---|
+| `APP_DIR` | アプリの絶対パス。`project.yml`、`app.rb`、`Sources/`を含む |
+| `APP_NAME` | 短い名前。libmrubyのビルドは`build/{ios,watchos}-<name>-{sim,device}`、derived dataは`build/{ios,watchos}-<name>-app{,-device}` |
+| `APP_SCHEME` | Xcodeのscheme兼target。プロジェクトは`$APP_DIR/<scheme>.xcodeproj` |
+| `APP_BUNDLE` | bundle id |
+| `MRUBY_CONFIG` | Simulator用`lib`のビルド設定の絶対パス |
+| `MRUBY_CONFIG_DEVICE` | `device:lib`のビルド設定の絶対パス |
+| `APP_GOLDEN` | `ios:app:observe`のみ。正常起動が出力する部分文字列 |
+| `APP_LAUNCH_ARGS` | `device:run`のみ。起動するプロセスへ渡す引数（shell分割） |
+| `APP_CONSOLE` | `device:run`のみ。`1`でconsole起動に`--terminate-existing`を足し、動いているものを置き換えてプロセス終了時にタスクが戻る |
+
+タスクは必要な変数が未設定なら、その名前を出して止まります。`lib`と`device:lib`は
+`libmruby.a`とpicorubyのヘッダを`$APP_DIR/Vendor`に置き、`watchos:app:device:lib`は
+デバイスビルドを`arm64_32`で再アーカイブします。`gen`は`R2P2_DARWIN`に本リポジトリの
+ルートを入れて`xcodegen`を走らせるので、アプリの`project.yml`はこのツリーを
+`${R2P2_DARWIN}/bridge`、`${R2P2_DARWIN}/vendor/picoruby/...`、
+`${R2P2_DARWIN}/build/ios-<name>-sim/include`として参照します。
+
+アプリの`app.rb`はdispatcherを定数`App`に代入し、`vm_call`は各メソッドをそこへ送ります。
 
 ## 実機で動かす
 
@@ -297,7 +330,7 @@ Vendor/lib/libmruby.a                        prism コンパイラ + mruby VM。
   文字列で返します。解放は呼び出し側の責務です。`repl`exampleがこれを使い、
   評価ごとにクリーンなVMが1つ立ちます。
 - `vm_open` / `vm_call` / `vm_close`は永続VMを持ちます。`vm_open`が同梱の
-  `app.rb`をコンパイル・実行し、`app.rb`はRubyのグローバル`$app`を代入します。
+  `app.rb`をコンパイル・実行し、`app.rb`はRubyの定数`App`を代入します。
   `vm_call`はそのオブジェクトのメソッドを呼び、そのメソッドがprintした内容を
   返します。他のexampleはすべてこちらです。各`vm_call`はmrubyのtask内で
   dispatchされるため、RubyコードはVM自身のイベントキューでblockできます。VMに
@@ -323,10 +356,10 @@ BLE系exampleの`app.rb`が`BLE`をサブクラス化する前に`require "ble"`
 **縮小版** — `conf.picoruby` + `mruby-compiler` + `picoruby-machine`のみで
 gemboxなし。`puts`と`print`のあるコアRubyですが`stdlib`が無く、`defined?`・
 `String#ord`・`String#%`は使えません。`virtual-peripheral`、`iphone-torch`、
-`stackchan`、`tilt-synth`、watchOS exampleが使います。
+`tilt-synth`、watchOS exampleが使います。
 
 ビルド設定はexampleごとに独立しているので、縮小版で足りないexampleは自分の設定に
-gemを足します。`virtual-peripheral`と`stackchan`で`Array#pack`が使えて
+gemを足します。`virtual-peripheral`で`Array#pack`が使えて
 `iphone-torch`では使えないのはそのためです。exampleに新しいRubyを載せるときは、
 実機で頼る前に`rake smoke`のホストビルドで試してください。
 
@@ -367,7 +400,7 @@ io-console / machine / socket）と`hal-io-darwin`を加えたものです。
 upstreamの`picoruby/picoruby` masterにはこれらのportがありません。
 `PICORUBY_REF`をそちらへ向けると、darwin portを先に選ぶexampleがすべて壊れます。
 `networking`（TLSがiOSに無いOpenSSLを要求する）、`virtual-peripheral`、
-`stackchan`、そしてwatchOSビルドです。portを持つfork / branchであれば何でも
+そしてwatchOSビルドです。portを持つfork / branchであれば何でも
 構いません。`PICORUBY_REF`はvendorツリー全体を差し替えるものであり、特定のrefに
 固定する規則はここにはありません。
 
@@ -376,7 +409,8 @@ upstreamの`picoruby/picoruby` masterにはこれらのportがありません。
 ```
 R2P2-darwin/
   Rakefile               check / setup / refresh / smoke / regress:* /
-                         ios:<example>:* / watchos:<example>:* / determinism:* /
+                         ios:<example>:* / watchos:<example>:* /
+                         ios:app:* / watchos:app:* / determinism:* /
                          clean / clobber
   rakelib/macos.rake     macos:check / macos:build / macos:run / macos:single
   build_config/
@@ -388,7 +422,6 @@ R2P2-darwin/
     r2p2-picoruby-ios-{rng,mbedtls,io-console}-sim.rb
                                                     単一 gem の darwin port 検証用
                                                     （rake タスク無し。下記参照）
-    r2p2-stackchan-pc.rb                            stackchan-picoruby の PC 側ホストビルド
   bridge/                picoruby_bridge.{c,h}, task_hal_ios.c, smoke_test.c
   examples/
     ios/<name>/          SwiftUI アプリ + app.rb（必要なら example 専用 gem）
