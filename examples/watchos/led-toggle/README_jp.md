@@ -29,7 +29,7 @@ class LEDApp
   end
 end
 
-$app = LEDApp.new
+App = LEDApp.new
 puts "booted"
 ```
 
@@ -39,14 +39,14 @@ Swiftは色のロジックを1つも持たず、VMをホストして結果を中
 ContentView（赤/青の円 Text、.onTapGesture）
         │
         ├─ .onAppear ──> VMExecutor.start ──> vm_open(app.rb)   永続 VM 1つ
-        │                                       LEDApp.new, $app
+        │                                       LEDApp.new, App
         │
-        ├─ 0.1s タイマー ──> vm_call($app, "tick")   ──> "red"/"blue" ──> Text を更新
-        └─ タップ         ──> vm_call($app, "toggle") ──> @state を反転し新しい色を返す
+        ├─ 0.1s タイマー ──> vm_call(App, "tick")   ──> "red"/"blue" ──> Text を更新
+        └─ タップ         ──> vm_call(App, "toggle") ──> @state を反転し新しい色を返す
 ```
 
 `@state == "red" ? "blue" : "red"`を評価するのは時計上のmruby VMです。したがって
-Swiftが描く色は、文字通りRubyが返したものです。`vm_call`はRubyのグローバル`$app`の
+Swiftが描く色は、文字通りRubyが返したものです。`vm_call`はRubyの定数`App`の
 メソッドを呼び、そのメソッドが`print`した内容を文字列として返します。
 `VMExecutor`はそれを、円を選ぶSwiftUIの`@State`へ写します。
 

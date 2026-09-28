@@ -6,7 +6,7 @@
 # URL-loading API, so App Transport Security (which only governs
 # NSURLSession/CFNetwork) does not apply.
 #
-# vm_call(vm, "fetch", "") invokes $app.fetch and returns whatever this prints
+# vm_call(vm, "fetch", "") invokes App.fetch and returns whatever this prints
 # (captured stdout), which the UI appends to its log.
 #
 # app.rb is compiled at runtime, in-app, by PicoRuby's prism compiler: change the
@@ -63,4 +63,4 @@ class NetApp
   end
 end
 
-$app = NetApp.new
+App = NetApp.new

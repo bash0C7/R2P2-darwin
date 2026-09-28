@@ -172,4 +172,4 @@ class VirtualPeripheral < BLE
   end
 end
 
-$app = VirtualPeripheral.new
+App = VirtualPeripheral.new

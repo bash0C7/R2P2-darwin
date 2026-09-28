@@ -2,7 +2,7 @@ import Foundation
 
 // Owns the persistent PicoRuby VM. mruby is single-threaded, so vm_open /
 // vm_call / vm_close MUST all run on ONE thread. This serial DispatchQueue is
-// that thread; the SwiftUI layer only posts onto it. app.rb defines $app =
+// that thread; the SwiftUI layer only posts onto it. app.rb defines App =
 // NetApp.new at boot; the FETCH button posts a `call("fetch")` which runs
 // vm_call on the VM thread and returns app.rb's printed log lines.
 //
@@ -34,7 +34,7 @@ final class VMExecutor {
         }
     }
 
-    // Invoke `method` ("fetch") on $app, returning app.rb's captured stdout.
+    // Invoke `method` ("fetch") on App, returning app.rb's captured stdout.
     func call(_ method: String) {
         queue.async {
             guard let vm = self.vm else { return }

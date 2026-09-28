@@ -67,4 +67,4 @@ class TiltSynthApp
   end
 end
 
-$app = TiltSynthApp.new
+App = TiltSynthApp.new

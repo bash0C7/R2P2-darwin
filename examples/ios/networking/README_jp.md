@@ -19,7 +19,7 @@ FETCHボタンがSwiftUIからmbedTLSまでの呼び出し連鎖を1本駆動し
 
 ```
 [SwiftUI の FETCH ボタン]
-  --VMExecutor.shared.call("fetch")-->  $app（NetApp、Ruby）
+  --VMExecutor.shared.call("fetch")-->  App（NetApp、Ruby）
     --> Net::HTTP.new(HOST, 443).get(PATH)   picoruby-net-http（Ruby）
     --> SSLSocket.open(host, port, ctx)      picoruby-socket（mruby glue）
     --> ports/darwin/ssl_socket.c            生の BSD ソケット + mbedTLS ハンドシェイク

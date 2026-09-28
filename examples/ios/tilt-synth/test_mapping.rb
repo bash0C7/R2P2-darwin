@@ -3,7 +3,7 @@
 # Ruby for its mapping math (no PicoRuby-specific gems), so CRuby and the
 # reduced PicoRuby VM produce identical results. Stubs Motion/Synth (normally
 # provided by the picoruby-iphone-motion/-synth gems) so this runs with no
-# device, no build, and no Xcode. Mirrors stackchan's test_frames.rb pattern.
+# device, no build, and no Xcode.
 
 class Motion
   def initialize
@@ -38,39 +38,39 @@ def expect(label, actual, want)
 end
 
 def tick_with(pitch:, roll:, available: true)
-  $app.motion.pitch = pitch
-  $app.motion.roll = roll
-  $app.motion.available = available
-  $app.tick
+  App.motion.pitch = pitch
+  App.motion.roll = roll
+  App.motion.available = available
+  App.tick
 end
 
 tick_with(pitch: -30.0, roll: 0.0)
-expect("pitch -30 -> lowest note", $app.synth.note, 261.6)
+expect("pitch -30 -> lowest note", App.synth.note, 261.6)
 
 tick_with(pitch: 30.0, roll: 0.0)
-expect("pitch +30 -> highest note", $app.synth.note, 880.0)
+expect("pitch +30 -> highest note", App.synth.note, 880.0)
 
 tick_with(pitch: -100.0, roll: 0.0)
-expect("pitch below range clamps to lowest note", $app.synth.note, 261.6)
+expect("pitch below range clamps to lowest note", App.synth.note, 261.6)
 
 tick_with(pitch: 100.0, roll: 0.0)
-expect("pitch above range clamps to highest note", $app.synth.note, 880.0)
+expect("pitch above range clamps to highest note", App.synth.note, 880.0)
 
 tick_with(pitch: 0.0, roll: -45.0)
-expect("roll -45 -> fm_depth 0.0", $app.synth.fm_depth, 0.0)
+expect("roll -45 -> fm_depth 0.0", App.synth.fm_depth, 0.0)
 
 tick_with(pitch: 0.0, roll: 45.0)
-expect("roll +45 -> fm_depth 1.0", $app.synth.fm_depth, 1.0)
+expect("roll +45 -> fm_depth 1.0", App.synth.fm_depth, 1.0)
 
 tick_with(pitch: 0.0, roll: -200.0)
-expect("roll below range clamps to 0.0", $app.synth.fm_depth, 0.0)
+expect("roll below range clamps to 0.0", App.synth.fm_depth, 0.0)
 
 tick_with(pitch: 0.0, roll: 200.0)
-expect("roll above range clamps to 1.0", $app.synth.fm_depth, 1.0)
+expect("roll above range clamps to 1.0", App.synth.fm_depth, 1.0)
 
-$app.synth.reset!
+App.synth.reset!
 tick_with(pitch: 30.0, roll: 0.0, available: false)
-expect("unavailable motion -> tick is a no-op", $app.synth.note, nil)
+expect("unavailable motion -> tick is a no-op", App.synth.note, nil)
 
 if $failures.zero?
   puts "\nall passed"
