@@ -72,7 +72,7 @@ the time spent waiting for notifications.
   and writes `01 00` to it with
   `write_characteristic_descriptor_using_descriptor_handle`.
 - Every `GATT_EVENT_NOTIFICATION` (0xA7) is decoded from the event bytes —
-  value handle at offset 4, length at 6, value from 8 — and printed.
+  value handle at offset 8, length at 10, value from 12 — and printed.
 - `scan` runs with `stop_state: :no_stop`, so the link stays up until `SCAN_MS`
   expires; `start` then powers the radio off.
 

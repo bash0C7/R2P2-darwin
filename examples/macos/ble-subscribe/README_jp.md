@@ -70,7 +70,7 @@ cat /tmp/ble-subscribe.log
   Configuration descriptor（UUID 0x2902）を128-bit UUIDで探して、
   `write_characteristic_descriptor_using_descriptor_handle`で`01 00`を書きます。
 - `GATT_EVENT_NOTIFICATION`（0xA7）はevent bytesから直接decodeします
-  （offset 4がvalue handle、6が長さ、8から値）。
+  （offset 8がvalue handle、10が長さ、12から値）。
 - `scan`は`stop_state: :no_stop`で回すので、`SCAN_MS`が尽きるまでlinkは
   張られたままです。その後`start`が無線を切ります。
 

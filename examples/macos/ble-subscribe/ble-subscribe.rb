@@ -25,9 +25,10 @@ class SubscribeCentral < BLE
   def packet_callback(event_packet)
     super
     if event_packet.getbyte(0) == GATT_EVENT_NOTIFICATION
-      handle = Utils.little_endian_to_int16(event_packet.byteslice(4, 2))
-      length = Utils.little_endian_to_int16(event_packet.byteslice(6, 2))
-      value = event_packet.byteslice(8, length) || ""
+      # BTstack 1.6+ layout: payload at offset 8 (value_handle, length, value)
+      handle = Utils.little_endian_to_int16(event_packet.byteslice(8, 2))
+      length = Utils.little_endian_to_int16(event_packet.byteslice(10, 2))
+      value = event_packet.byteslice(12, length) || ""
       puts "Notification from handle #{handle}: #{value.inspect} (#{hex_bytes(value)})"
     end
     subscribe if @state == :TC_IDLE && !@subscribed
