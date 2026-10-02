@@ -36,8 +36,8 @@ spinel and suppify are external tools, discovered like `cc` — never vendored i
 
 ## Steps
 
-Create a TodoWrite item per step. `<example>` is an iOS example dir (proven on `repl`);
-`<name>` names the gem and its C API. The Ruby method keeps its own `def` name.
+`<example>` is an iOS example dir (proven on `repl`); `<name>` names the gem and its
+C API. The Ruby method keeps its own `def` name.
 
 ### 1. Extract the kernel to a standalone source
 
