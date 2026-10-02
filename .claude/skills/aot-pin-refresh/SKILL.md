@@ -32,8 +32,6 @@ overwrites `.github/aot-pins.yml` on success, mirroring suppify's own `check_pin
 
 ## Procedure
 
-Create a TodoWrite item per step.
-
 1. **Check suppify first, in its own repo** (`~/dev/src/github.com/bash0C7/suppify`, its
    own `spinel-tracking` skill). This repo's suppify pin should only ever advance to a
    suppify commit that repo's own `spinel:check_pin` has already verified — do not skip
