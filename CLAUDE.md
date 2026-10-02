@@ -110,7 +110,7 @@ regexが `invalid byte sequence` で落ちる。
 build / clone / 署名のlogは長い。main contextに流し込むと判断の質が落ちるので分離する。
 
 - **haiku subagent**: 決定論的なコマンド実行（build、install、`rake refresh`、tmuxの長尺job、
-  scriptによる書換え、git plumbing）。実行するコマンドをverbatimで渡し、raw outputをそのまま
+  scriptによる書換え、read系のgit plumbing）。実行するコマンドをverbatimで渡し、raw outputをそのまま
   返させる。解釈・要約・改変をさせない
 - **sonnet subagent**: logと証拠の解釈（build log / link error / test出力 / `git log`）。
   事実と推論を分けて報告させ、推奨は求めない
