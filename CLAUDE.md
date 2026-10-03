@@ -65,6 +65,24 @@ source of truth。**このファイルにはREADMEに書いていないことだ
   Simulator buildをする前（逆も同様）は必ずそのexampleの `lib` taskを再実行する。
   確認は `lipo -info examples/<platform>/<name>/Vendor/lib/libmruby.a`
 
+## Xcode MCP
+
+`.mcp.json` が `xcrun mcpbridge` を `xcode` として繋ぐ（Xcode 27以降、事前に `sudo xcrun mcp-server enable`）。
+Swift / Xcode projectのbuild・Simulator起動・log取得はこちらを使い、PicoRuby VM（`libmruby.a`）の生成と実機へのinstallはrakeに残す。
+
+| 仕事 | 手段 |
+|---|---|
+| `libmruby.a` のcross-build、`gen`、`device:*`、`observe`、`regress` | rake |
+| buildの成否とerrorの構造化取得 | `BuildProject` |
+| Simulatorでの起動・console取得 | `RunProject` + `GetConsoleOutput`。起動引数が要る時は `DeviceInteractionStartWorkspaceSession` → `DeviceInteractionInstallAndRun`（`commandLineArguments`）→ `DeviceInteractionEndSession` |
+
+- 最初に `XcodeOpenWorkspace` を呼ぶ。承認はこのcallが起点で、他のtoolは未承認だと失敗する。
+- 他のtoolの引数は `workspaceIdentifier`。`XcodeOpenWorkspace` の戻り値で得る値で、開き直すたびに変わる。
+- Xcodeに開かせたまま `rake <name>:gen` でprojectを作り直さない。schemeが0個に見えてbuildが通らなくなる。`XcodeCloseWorkspace` してから `gen` し、開き直す。
+- Simulatorのbuildは先にそのexampleの `lib` taskを通す。worktreeには `vendor/picoruby` と `build/<name>/include` が無く、`'mruby.h' file not found` で落ちる。
+- `GetConsoleOutput` が返すのはoslog。appのstdout（`-StackchanBatch` の `[batch]` 行）が載るかは未確認。
+- 実機は `XcodeListRunDestinations` に出るが、実機へのinstallとlaunchをMCPで通せるかは未確認。完了の線引きは変わらず実機。
+
 ## 完了の線引き
 
 `rake regress:unit`（host、PRごとにCIが回す）→ `rake ios:<name>:device:check`（署名不要）→
