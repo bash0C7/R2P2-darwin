@@ -63,32 +63,37 @@ def stage_libmruby(config_basename, build_name, vendor_dir)
   puts "Staged #{build_name} libmruby.a + headers under #{vendor_dir}"
 end
 
-# The vendored prism (picoruby -> mruby -> mrbgems/mruby-compiler-prism) ships
-# its templates but not the files they generate; templates/template.rb produces
-# include/prism/diagnostic.h. The host mrbc (picoruby's build_mrbc_exec hook)
-# compiles prism during the presym scan, before any mrbgem.rake can run the
+# The vendored prism (mrbgems/mruby-compiler, and the copy under picoruby-mruby's
+# mruby) ships its templates but not the files they generate; templates/template.rb
+# produces include/prism/diagnostic.h. The host mrbc (picoruby's build_mrbc_exec
+# hook) compiles prism during the presym scan, before any mrbgem.rake can run the
 # generator, so on a clean clone the build aborts on the missing header.
-# Generate it right after fetch. Skips when template.rb is absent (template
-# layout differs) or diagnostic.h already exists (a picoruby that generates it
-# itself); the generator is idempotent either way.
-PRISM_TEMPLATE_DIR = File.join(
-  PICORUBY_SRC,
-  "mrbgems", "picoruby-mruby", "lib", "mruby",
-  "mrbgems", "mruby-compiler-prism", "lib", "prism"
-)
+# Generate it right after fetch. Skips a copy whose template.rb is absent
+# (template layout differs) or whose diagnostic.h already exists (a picoruby that
+# generates it itself); the generator is idempotent either way.
+PRISM_TEMPLATE_DIRS = [
+  File.join(PICORUBY_SRC, "mrbgems", "mruby-compiler", "lib", "prism"),
+  File.join(
+    PICORUBY_SRC,
+    "mrbgems", "picoruby-mruby", "lib", "mruby",
+    "mrbgems", "mruby-compiler", "lib", "prism"
+  ),
+]
 
 def generate_prism_templates
-  template = File.join(PRISM_TEMPLATE_DIR, "templates", "template.rb")
-  generated = File.join(PRISM_TEMPLATE_DIR, "include", "prism", "diagnostic.h")
-  unless File.exist?(template)
-    puts "prism templates: template.rb absent (#{template}); skipping"
-    return
+  PRISM_TEMPLATE_DIRS.each do |dir|
+    template = File.join(dir, "templates", "template.rb")
+    generated = File.join(dir, "include", "prism", "diagnostic.h")
+    unless File.exist?(template)
+      puts "prism templates: template.rb absent (#{template}); skipping"
+      next
+    end
+    if File.exist?(generated)
+      puts "prism templates: diagnostic.h already present (#{dir}); skipping"
+      next
+    end
+    sh "cd #{dir.shellescape} && #{RbConfig.ruby.shellescape} templates/template.rb"
   end
-  if File.exist?(generated)
-    puts "prism templates: diagnostic.h already present; skipping"
-    return
-  end
-  sh "cd #{PRISM_TEMPLATE_DIR.shellescape} && #{RbConfig.ruby.shellescape} templates/template.rb"
 end
 
 # Destination id of the SPECIFIC connected device (not generic/platform=...) so
