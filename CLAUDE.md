@@ -65,6 +65,30 @@ source of truth。**このファイルにはREADMEに書いていないことだ
   Simulator buildをする前（逆も同様）は必ずそのexampleの `lib` taskを再実行する。
   確認は `lipo -info examples/<platform>/<name>/Vendor/lib/libmruby.a`
 
+## Xcode MCP
+
+`.mcp.json` が `xcrun mcpbridge` を `xcode` として繋ぐ（Xcode 27以降、事前に `sudo xcrun mcp-server enable`）。
+Swift / Xcode projectのbuild・Simulatorと実機の起動・log取得はこちらを使い、PicoRuby VM（`libmruby.a`）の生成はrakeに残す。
+
+| 仕事 | 手段 |
+|---|---|
+| `libmruby.a` のcross-build、`gen`、`device:*`、`observe`、`regress` | rake |
+| buildの成否とerrorの構造化取得 | `BuildProject` |
+| Simulatorでの起動・console取得 | `RunProject` + `GetConsoleOutput`。起動引数が要る時は `DeviceInteractionStartWorkspaceSession` → `DeviceInteractionInstallAndRun`（`commandLineArguments`）→ `DeviceInteractionEndSession` |
+
+- 最初に `XcodeOpenWorkspace` を呼ぶ。承認はこのcallが起点で、他のtoolは未承認だと失敗する。
+- 他のtoolの引数は `workspaceIdentifier`。`XcodeOpenWorkspace` の戻り値で得る値で、開き直すたびに変わる。
+- Xcodeに開かせたまま `rake <name>:gen` でprojectを作り直さない。schemeが0個に見えてbuildが通らなくなる。`XcodeCloseWorkspace` してから `gen` し、開き直す。
+- Simulatorのbuildは先にそのexampleの `lib` taskを通す。worktreeには `vendor/picoruby` と `build/<name>/include` が無く、`'mruby.h' file not found` で落ちる。
+- `GetConsoleOutput` はoslogを返す。
+- 実機は `XcodeSwitchRunDestination` で実機を選び、`RunProject` で install と launch まで通る（`devicectl device info processes` でも起動を確認した）。実機の `libmruby.a` は先に `device:lib` で作る。
+- 実機の前提: iPhone のロック解除、Developer profile の信頼（設定 > 一般 > VPNとデバイス管理）、署名が通ること。`rake <name>:device:build` で署名を通す前は `No Accounts` / `No profiles` で失敗した。
+- 無料の Personal Team は、1台に入れられるappが3つまで。超えると `maximum number of installed apps using a free developer profile` で install が拒否され、`RunProject` は `The app failed to launch after building successfully` を返す。理由は `xcrun devicectl device install app` を直接叩くと読める。
+- 実機で `RunProject` が応答しない時は、iPhoneのロックを疑う。呼び出しは時間を区切る。
+- `DeviceInteractionStartWorkspaceSession` は実機をデバイス名でもUDIDでも受け付けず、Simulatorだけを候補に返す。
+- `rake <name>:device:run` は `DEVICE_NAME` を指定しないと、paired な端末のうち1台を並び順で選ぶ。指定しても、一覧の識別子がUUID形式でない端末（`00008110-…`）は拾えず `no connected iOS device` になる。その場合は `devicectl` を直接使う。
+- 完了の線引きは変わらず実機。
+
 ## 完了の線引き
 
 `rake regress:unit`（host、PRごとにCIが回す）→ `rake ios:<name>:device:check`（署名不要）→
