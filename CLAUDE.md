@@ -81,7 +81,9 @@ Swift / Xcode projectのbuild・Simulator起動・log取得はこちらを使い
 - Xcodeに開かせたまま `rake <name>:gen` でprojectを作り直さない。schemeが0個に見えてbuildが通らなくなる。`XcodeCloseWorkspace` してから `gen` し、開き直す。
 - Simulatorのbuildは先にそのexampleの `lib` taskを通す。worktreeには `vendor/picoruby` と `build/<name>/include` が無く、`'mruby.h' file not found` で落ちる。
 - `GetConsoleOutput` が返すのはoslog。appのstdout（`-StackchanBatch` の `[batch]` 行）が載るかは未確認。
-- 実機は `XcodeListRunDestinations` に出るが、実機へのinstallとlaunchをMCPで通せるかは未確認。完了の線引きは変わらず実機。
+- 実機向けの `BuildProject`（署名付き）は、先に `rake <name>:device:build` で署名を通した後なら成功する。通す前は `No Accounts` / `No profiles` で失敗した。
+- 実機への install と launch はMCPで通らなかった。`RunProject`（実機の destination）は応答が返らず、appは実機に入らない。`DeviceInteractionStartWorkspaceSession` は実機をデバイス名でもUDIDでも受け付けず、Simulatorだけを候補に返す。実機は `rake <name>:device:run`（`devicectl`）で行う。
+- 完了の線引きは変わらず実機。
 
 ## 完了の線引き
 
