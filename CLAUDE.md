@@ -68,7 +68,7 @@ source of truth。**このファイルにはREADMEに書いていないことだ
 ## Xcode MCP
 
 `.mcp.json` が `xcrun mcpbridge` を `xcode` として繋ぐ（Xcode 27以降、事前に `sudo xcrun mcp-server enable`）。
-Swift / Xcode projectのbuild・Simulator起動・log取得はこちらを使い、PicoRuby VM（`libmruby.a`）の生成と実機へのinstallはrakeに残す。
+Swift / Xcode projectのbuild・Simulatorと実機の起動・log取得はこちらを使い、PicoRuby VM（`libmruby.a`）の生成はrakeに残す。
 
 | 仕事 | 手段 |
 |---|---|
@@ -81,8 +81,12 @@ Swift / Xcode projectのbuild・Simulator起動・log取得はこちらを使い
 - Xcodeに開かせたまま `rake <name>:gen` でprojectを作り直さない。schemeが0個に見えてbuildが通らなくなる。`XcodeCloseWorkspace` してから `gen` し、開き直す。
 - Simulatorのbuildは先にそのexampleの `lib` taskを通す。worktreeには `vendor/picoruby` と `build/<name>/include` が無く、`'mruby.h' file not found` で落ちる。
 - `GetConsoleOutput` が返すのはoslog。appのstdout（`-StackchanBatch` の `[batch]` 行）が載るかは未確認。
-- 実機向けの `BuildProject`（署名付き）は、先に `rake <name>:device:build` で署名を通した後なら成功する。通す前は `No Accounts` / `No profiles` で失敗した。
-- 実機への install と launch はMCPで通らなかった。`RunProject`（実機の destination）は応答が返らず、appは実機に入らない。`DeviceInteractionStartWorkspaceSession` は実機をデバイス名でもUDIDでも受け付けず、Simulatorだけを候補に返す。実機は `rake <name>:device:run`（`devicectl`）で行う。
+- 実機は `XcodeSwitchRunDestination` で実機を選び、`RunProject` で install と launch まで通る（`devicectl device info processes` でも起動を確認した）。実機の `libmruby.a` は先に `device:lib` で作る。
+- 実機の前提: iPhone のロック解除、Developer profile の信頼（設定 > 一般 > VPNとデバイス管理）、署名が通ること。`rake <name>:device:build` で署名を通す前は `No Accounts` / `No profiles` で失敗した。
+- 無料の Personal Team は、1台に入れられるappが3つまで。超えると `maximum number of installed apps using a free developer profile` で install が拒否され、`RunProject` は `The app failed to launch after building successfully` を返す。理由は `xcrun devicectl device install app` を直接叩くと読める。
+- ロックが解けていない可能性のある状態で `RunProject` を呼ぶと、応答が返らないことがあった（原因は未切り分け）。呼び出しは時間を区切る。
+- `DeviceInteractionStartWorkspaceSession` は実機をデバイス名でもUDIDでも受け付けず、Simulatorだけを候補に返す。実機への起動引数の受け渡しは未確認。
+- `rake <name>:device:run` は `DEVICE_NAME` を指定しないと、paired な端末のうち1台を並び順で選ぶ。指定しても、一覧の識別子がUUID形式でない端末（`00008110-…`）は拾えず `no connected iOS device` になる。その場合は `devicectl` を直接使う。
 - 完了の線引きは変わらず実機。
 
 ## 完了の線引き
