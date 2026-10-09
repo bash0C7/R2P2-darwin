@@ -140,7 +140,7 @@ void *vm_open(const char *boot_src) {
   mrc_irep *irep = mrc_load_string_cxt(cc, &u, strlen(boot_src));
   if (irep == NULL) {
     /* The boot Ruby is bundled and fixed, so a compile failure is a build-time
-     * bug. Treat it as fatal rather than handing back a VM whose $app is nil. */
+     * bug. Treat it as fatal rather than handing back a VM without App. */
     print_diagnostics(cc);
     mrc_ccontext_free(cc);
     mrb_close(mrb);
@@ -173,12 +173,12 @@ char *vm_call(void *vm, const char *method, const char *arg) {
   dup2(fileno(cap), 1); dup2(fileno(cap), 2);
 
   int ai = mrb_gc_arena_save(mrb);
-  if (mrb_nil_p(mrb_gv_get(mrb, mrb_intern_lit(mrb, "$app")))) {
-    /* Boot ran but never assigned $app (a runtime exception before the
-     * assignment): every dispatch would raise NoMethodError on nil and a
-     * periodic tick would spam one backtrace per call. Say what actually
-     * happened, once per call, instead. */
-    fprintf(stderr, "vm_call: $app is nil (boot failed before assigning it)\n");
+  if (!mrb_const_defined(mrb, mrb_obj_value(mrb->object_class), mrb_intern_lit(mrb, "App"))) {
+    /* Boot ran but never assigned App (a runtime exception before the
+     * assignment): every dispatch would raise NameError and a periodic tick
+     * would spam one backtrace per call. Say what actually happened, once
+     * per call, instead. */
+    fprintf(stderr, "vm_call: App is not defined (boot failed before assigning it)\n");
   } else {
     /* Expose method/arg to the fixed dispatcher source via globals. */
     mrb_gv_set(mrb, mrb_intern_lit(mrb, "$__vm_method"),
@@ -193,7 +193,7 @@ char *vm_call(void *vm, const char *method, const char *arg) {
      * the irep in place, so one irep cannot back two tasks. __send__ from
      * bytecode re-dispatches in the same callinfo (no C boundary), which
      * keeps Task::Queue#pop legal inside the called method. */
-    static const char dispatch_src[] = "$app.__send__($__vm_method, $__vm_arg)";
+    static const char dispatch_src[] = "App.__send__($__vm_method, $__vm_arg)";
     mrc_ccontext *cc = mrc_ccontext_new(mrb);
     mrc_ccontext_filename(cc, "vm_call");
     const uint8_t *u = (const uint8_t *)dispatch_src;

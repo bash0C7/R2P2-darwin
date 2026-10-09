@@ -19,7 +19,7 @@ below the bridge is either Ruby or picoruby-socket's C.
 
 ```
 [SwiftUI FETCH button]
-  --VMExecutor.shared.call("fetch")-->  $app (NetApp, Ruby)
+  --VMExecutor.shared.call("fetch")-->  App (NetApp, Ruby)
     --> Net::HTTP.new(HOST, 443).get(PATH)   picoruby-net-http (Ruby)
     --> SSLSocket.open(host, port, ctx)      picoruby-socket (mruby glue)
     --> ports/darwin/ssl_socket.c            raw BSD socket + mbedTLS handshake

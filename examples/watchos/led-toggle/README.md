@@ -30,7 +30,7 @@ class LEDApp
   end
 end
 
-$app = LEDApp.new
+App = LEDApp.new
 puts "booted"
 ```
 
@@ -40,15 +40,15 @@ Swift owns no colour logic. It hosts the VM and relays the result:
 ContentView (red/blue circle Text, .onTapGesture)
         │
         ├─ .onAppear ──> VMExecutor.start ──> vm_open(app.rb)   one persistent VM
-        │                                       LEDApp.new, $app
+        │                                       LEDApp.new, App
         │
-        ├─ 0.1s timer ──> vm_call($app, "tick")   ──> "red"/"blue" ──> updates the Text
-        └─ tap        ──> vm_call($app, "toggle") ──> flips @state, returns the new colour
+        ├─ 0.1s timer ──> vm_call(App, "tick")   ──> "red"/"blue" ──> updates the Text
+        └─ tap        ──> vm_call(App, "toggle") ──> flips @state, returns the new colour
 ```
 
 `@state == "red" ? "blue" : "red"` is evaluated by the mruby VM on the watch, so
 the colour Swift renders is literally whatever Ruby returned. `vm_call` invokes a
-method on the Ruby global `$app` and hands back that method's captured `print`
+method on the Ruby constant `App` and hands back that method's captured `print`
 output as a string; `VMExecutor` maps it to the SwiftUI `@State` that selects the
 circle.
 

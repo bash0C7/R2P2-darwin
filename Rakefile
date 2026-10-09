@@ -12,12 +12,16 @@ def mruby_env(cfg)
   { "MRUBY_BUILD_DIR" => BUILD_DIR, "MRUBY_CONFIG" => File.absolute_path(cfg) }
 end
 
+def build_config_path(config)
+  File.absolute_path(config, File.join(ROOT, "build_config"))
+end
+
 # What a build/<name>/ directory was produced from: the picoruby tree it
 # compiled and the build_config that drove it. build_config files are
 # self-contained (none require another), so the config's own digest is the whole
 # story for the config side.
-def build_stamp(config_basename)
-  cfg = File.join(ROOT, "build_config", config_basename)
+def build_stamp(config)
+  cfg = build_config_path(config)
   sha = if File.directory?(File.join(PICORUBY_SRC, ".git"))
           `git -C #{PICORUBY_SRC.shellescape} rev-parse HEAD`.strip
         else
@@ -34,8 +38,8 @@ end
 # while staging the previous picoruby's archive. The app then fails to link
 # against a symbol that moved — the error names the symbol, never the stale
 # directory. Stamp each build dir with its inputs and wipe it when they change.
-def invalidate_stale_build(config_basename, build_name)
-  want  = build_stamp(config_basename)
+def invalidate_stale_build(config, build_name)
+  want  = build_stamp(config)
   dir   = File.join(BUILD_DIR, build_name)
   stamp = File.join(dir, ".r2p2-build-stamp")
   if File.directory?(dir) && (!File.file?(stamp) || File.read(stamp).strip != want)
@@ -48,9 +52,9 @@ end
 # Cross-build libmruby.a with the given build_config and stage the archive +
 # picoruby headers under <vendor_dir>. `build_name` is the MRuby build name (the
 # build/<name>/ output dir). Shared by each example's lib task.
-def stage_libmruby(config_basename, build_name, vendor_dir)
-  stamp = invalidate_stale_build(config_basename, build_name)
-  cfg = File.join(ROOT, "build_config", config_basename)
+def stage_libmruby(config, build_name, vendor_dir)
+  stamp = invalidate_stale_build(config, build_name)
+  cfg = build_config_path(config)
   sh mruby_env(cfg), "cd #{PICORUBY_SRC.shellescape} && rake"
   File.write(File.join(BUILD_DIR, build_name, ".r2p2-build-stamp"), stamp)
   lib = File.join(BUILD_DIR, build_name, "lib", "libmruby.a")
@@ -230,10 +234,12 @@ def devicectl_udid(pattern, label)
 end
 
 # Install and launch the app on the connected device via devicectl.
-def device_install_launch(pattern, label, app, bundle_id)
+def device_install_launch(pattern, label, app, bundle_id, launch_args: [], terminate_existing: false)
   dev = devicectl_udid(pattern, label)
   sh "xcrun devicectl device install app --device #{dev} #{app.shellescape}"
-  sh "xcrun devicectl device process launch --console --device #{dev} #{bundle_id}"
+  flags = terminate_existing ? "--console --terminate-existing" : "--console"
+  target = launch_args.empty? ? bundle_id.shellescape : "-- #{[bundle_id, *launch_args].shelljoin}"
+  sh "xcrun devicectl device process launch #{flags} --device #{dev} #{target}"
 end
 
 # Simulator kept booted and never recreated/erased, so its DiagnosticReports
@@ -446,9 +452,6 @@ IOS_EXAMPLES = [
   { name: "repl",      label: "PicoRuby Runner",    dir: "repl",
     scheme: "PicoRubyRunner",    lib_phrase: "WITH the full-REPL gembox",
     golden: "hello 3" },
-  { name: "stackchan", label: "Stack-chan",         dir: "stackchan",
-    scheme: "Stackchan",         lib_phrase: "WITH picoruby-ble + Darwin port",
-    golden: "[Stackchan] VM opened" },
   { name: "vperiph",   label: "Virtual Peripheral", dir: "virtual-peripheral",
     scheme: "VirtualPeripheral", lib_phrase: "WITH picoruby-ble + Darwin port",
     golden: "[VirtualPeripheral] VM opened" },
@@ -565,74 +568,181 @@ namespace :watchos do
       task all: [:lib, "watchos:led:gen", :build, :run]
     end
   end
+end
 
-  namespace :stackchan do
-    ws_dir            = File.join(ROOT, "examples", "watchos", "stackchan")
-    ws_proj           = File.join(ws_dir, "WatchStackchan.xcodeproj")
-    ws_bundle         = "com.bash0c7.picoruby.WatchStackchan"
-    ws_vendor         = File.join(ws_dir, "Vendor")
-    ws_derived        = File.join(ROOT, "build", "watchos-stackchan-app")
-    ws_device_derived = File.join(ROOT, "build", "watchos-stackchan-app-device")
+EXTERNAL_APP_ENV = %w[APP_DIR APP_NAME APP_SCHEME APP_BUNDLE MRUBY_CONFIG MRUBY_CONFIG_DEVICE].freeze
+EXTERNAL_APP_ABSOLUTE = %w[APP_DIR MRUBY_CONFIG MRUBY_CONFIG_DEVICE].freeze
 
-    desc "Cross-build libmruby.a for watchOS Simulator (BLE) and stage under examples/watchos/stackchan/Vendor (env: WATCHOS_MIN)"
+def app_env(*names)
+  names.map do |n|
+    v = ENV[n].to_s
+    abort "#{n} is not set (external app env: #{EXTERNAL_APP_ENV.join(' ')})" if v.empty?
+    abort "#{n} must be an absolute path: #{v}" if EXTERNAL_APP_ABSOLUTE.include?(n) && !v.start_with?("/")
+    v
+  end
+end
+
+def external_app(platform)
+  dir, name, scheme, bundle = app_env("APP_DIR", "APP_NAME", "APP_SCHEME", "APP_BUNDLE")
+  {
+    dir: dir, name: name, scheme: scheme, bundle: bundle,
+    proj: File.join(dir, "#{scheme}.xcodeproj"),
+    vendor: File.join(dir, "Vendor"),
+    sim_build: "#{platform}-#{name}-sim",
+    device_build: "#{platform}-#{name}-device",
+    derived: File.join(BUILD_DIR, "#{platform}-#{name}-app"),
+    device_derived: File.join(BUILD_DIR, "#{platform}-#{name}-app-device"),
+  }
+end
+
+def external_app_gen(platform)
+  a = external_app(platform)
+  sh({ "R2P2_DARWIN" => ROOT }, "cd #{a[:dir].shellescape} && xcodegen generate")
+end
+
+def external_app_launch_opts
+  {
+    launch_args: Shellwords.split(ENV["APP_LAUNCH_ARGS"].to_s),
+    terminate_existing: ENV["APP_CONSOLE"] == "1",
+  }
+end
+
+EXTERNAL_APP_ENV_DESC = "env: APP_DIR APP_NAME APP_SCHEME APP_BUNDLE"
+
+namespace :ios do
+  namespace :app do
+    desc "Cross-build libmruby.a (Simulator) from MRUBY_CONFIG and stage under $APP_DIR/Vendor (#{EXTERNAL_APP_ENV_DESC} MRUBY_CONFIG, IOS_MIN)"
     task lib: :setup do
-      stage_libmruby("r2p2-picoruby-watchos-stackchan-sim.rb", "watchos-stackchan-sim", ws_vendor)
+      a = external_app("ios")
+      cfg, = app_env("MRUBY_CONFIG")
+      stage_libmruby(cfg, a[:sim_build], a[:vendor])
     end
 
-    desc "Generate the Watch Stack-chan Xcode project from project.yml"
+    desc "Generate the external app's Xcode project from $APP_DIR/project.yml, with R2P2_DARWIN set (#{EXTERNAL_APP_ENV_DESC})"
     task :gen do
-      sh "cd #{ws_dir.shellescape} && xcodegen generate"
+      external_app_gen("ios")
     end
 
-    desc "Build the Watch Stack-chan app for the watchOS Simulator"
+    desc "Build the external app for the iOS Simulator (#{EXTERNAL_APP_ENV_DESC})"
     task :build do
-      sim_build(ws_proj, "WatchStackchan", ws_derived,
-                platform: "watchOS Simulator", exclude_x86_64: false)
+      a = external_app("ios")
+      sim_build(a[:proj], a[:scheme], a[:derived])
     end
 
-    desc "Boot a watchOS simulator, install, and launch the Watch Stack-chan app"
+    desc "Boot a simulator, install, and launch the external app (#{EXTERNAL_APP_ENV_DESC})"
     task :run do
-      app = built_app(ws_derived, "*-watchsimulator", "WatchStackchan", "watchos:stackchan:build")
-      sim_install_launch("Apple Watch", app, ws_bundle)
+      a = external_app("ios")
+      app = built_app(a[:derived], "*-iphonesimulator", a[:scheme], "ios:app:build")
+      sim_install_launch("iPhone", app, a[:bundle])
     end
 
-    desc "Full Watch Stack-chan pipeline: lib -> gen -> build -> run"
+    desc "Full external app Simulator pipeline: lib -> gen -> build -> run (#{EXTERNAL_APP_ENV_DESC} MRUBY_CONFIG)"
+    task all: [:lib, :gen, :build, :run]
+
+    desc "Observe the external app launch N times on a frozen Simulator (#{EXTERNAL_APP_ENV_DESC} APP_GOLDEN, SIM_UDID, OBSERVE_N)"
+    task :observe do
+      a = external_app("ios")
+      golden, = app_env("APP_GOLDEN")
+      app = built_app(a[:derived], "*-iphonesimulator", a[:scheme], "ios:app:build")
+      observe(a[:name], app, a[:bundle], golden: golden)
+    end
+
+    namespace :device do
+      desc "Cross-build libmruby.a (iphoneos arm64) from MRUBY_CONFIG_DEVICE and stage under $APP_DIR/Vendor (#{EXTERNAL_APP_ENV_DESC} MRUBY_CONFIG_DEVICE, IOS_MIN)"
+      task lib: :setup do
+        a = external_app("ios")
+        cfg, = app_env("MRUBY_CONFIG_DEVICE")
+        stage_libmruby(cfg, a[:device_build], a[:vendor])
+      end
+
+      desc "Build the external app, signed, for the connected iOS device (#{EXTERNAL_APP_ENV_DESC})"
+      task :build do
+        a = external_app("ios")
+        device_build(a[:proj], a[:scheme], a[:device_derived], archs: "arm64")
+      end
+
+      desc "Link the external app for a generic iOS device without signing (#{EXTERNAL_APP_ENV_DESC})"
+      task :check do
+        a = external_app("ios")
+        device_check_build(a[:proj], a[:scheme], a[:device_derived], archs: "arm64")
+      end
+
+      desc "Install and launch the external app on the connected iOS device (#{EXTERNAL_APP_ENV_DESC}, APP_LAUNCH_ARGS, APP_CONSOLE=1)"
+      task :run do
+        a = external_app("ios")
+        app = built_app(a[:device_derived], "*-iphoneos", a[:scheme], "ios:app:device:build")
+        device_install_launch(/iPhone|iPad/, "iOS device", app, a[:bundle], **external_app_launch_opts)
+      end
+
+      desc "Full external app device pipeline: lib -> gen -> build -> run (#{EXTERNAL_APP_ENV_DESC} MRUBY_CONFIG_DEVICE)"
+      task all: [:lib, "ios:app:gen", :build, :run]
+    end
+  end
+end
+
+namespace :watchos do
+  namespace :app do
+    desc "Cross-build libmruby.a for watchOS Simulator from MRUBY_CONFIG and stage under $APP_DIR/Vendor (#{EXTERNAL_APP_ENV_DESC} MRUBY_CONFIG, WATCHOS_MIN)"
+    task lib: :setup do
+      a = external_app("watchos")
+      cfg, = app_env("MRUBY_CONFIG")
+      stage_libmruby(cfg, a[:sim_build], a[:vendor])
+    end
+
+    desc "Generate the external watch app's Xcode project from $APP_DIR/project.yml, with R2P2_DARWIN set (#{EXTERNAL_APP_ENV_DESC})"
+    task :gen do
+      external_app_gen("watchos")
+    end
+
+    desc "Build the external watch app for the watchOS Simulator (#{EXTERNAL_APP_ENV_DESC})"
+    task :build do
+      a = external_app("watchos")
+      sim_build(a[:proj], a[:scheme], a[:derived], platform: "watchOS Simulator", exclude_x86_64: false)
+    end
+
+    desc "Boot a watchOS simulator, install, and launch the external watch app (#{EXTERNAL_APP_ENV_DESC})"
+    task :run do
+      a = external_app("watchos")
+      app = built_app(a[:derived], "*-watchsimulator", a[:scheme], "watchos:app:build")
+      sim_install_launch("Apple Watch", app, a[:bundle])
+    end
+
+    desc "Full external watch app Simulator pipeline: lib -> gen -> build -> run (#{EXTERNAL_APP_ENV_DESC} MRUBY_CONFIG)"
     task all: [:lib, :gen, :build, :run]
 
     namespace :device do
-      desc "Cross-build libmruby.a for watchOS device (arm64_32, BLE) and stage under examples/watchos/stackchan/Vendor (env: WATCHOS_MIN)"
+      desc "Cross-build libmruby.a for watchOS device (arm64_32) from MRUBY_CONFIG_DEVICE and stage under $APP_DIR/Vendor (#{EXTERNAL_APP_ENV_DESC} MRUBY_CONFIG_DEVICE, WATCHOS_MIN)"
       task lib: :setup do
-        stage_libmruby("r2p2-picoruby-watchos-stackchan-device.rb", "watchos-stackchan-device", ws_vendor)
-        # stage_libmruby copies the fat/arm64 archive mruby just built; the
-        # physical watch needs arm64_32. Recompile in place and re-stage so
-        # Vendor/lib never ends up with an arch the device can't run.
+        a = external_app("watchos")
+        cfg, = app_env("MRUBY_CONFIG_DEVICE")
+        stage_libmruby(cfg, a[:device_build], a[:vendor])
         sh "ruby #{File.join(ROOT, "build_config", "recompile_arm64_32.rb").shellescape} " \
-           "watchos-stackchan-device r2p2-picoruby-watchos-stackchan-device.rb"
-        lib = File.join(BUILD_DIR, "watchos-stackchan-device", "lib", "libmruby.a")
-        cp lib, File.join(ws_vendor, "lib", "libmruby.a")
-        puts "Re-staged arm64_32 libmruby.a under #{ws_vendor}"
+           "#{a[:device_build].shellescape} #{cfg.shellescape}"
+        cp File.join(BUILD_DIR, a[:device_build], "lib", "libmruby.a"), File.join(a[:vendor], "lib", "libmruby.a")
+        puts "Re-staged arm64_32 libmruby.a under #{a[:vendor]}"
       end
 
-      desc "Build the Watch Stack-chan app, signed, for the connected Apple Watch"
+      desc "Build the external watch app, signed, for the connected Apple Watch (#{EXTERNAL_APP_ENV_DESC})"
       task :build do
-        device_build(ws_proj, "WatchStackchan", ws_device_derived,
-                     archs: "arm64_32", platform: "watchOS")
+        a = external_app("watchos")
+        device_build(a[:proj], a[:scheme], a[:device_derived], archs: "arm64_32", platform: "watchOS")
       end
 
-      desc "Link the Watch Stack-chan app for a generic watchOS device without signing (no watch needed)"
+      desc "Link the external watch app for a generic watchOS device without signing (#{EXTERNAL_APP_ENV_DESC})"
       task :check do
-        device_check_build(ws_proj, "WatchStackchan", ws_device_derived,
-                           archs: "arm64_32", platform: "watchOS")
+        a = external_app("watchos")
+        device_check_build(a[:proj], a[:scheme], a[:device_derived], archs: "arm64_32", platform: "watchOS")
       end
 
-      desc "Install and launch the Watch Stack-chan app on the connected Apple Watch"
+      desc "Install and launch the external watch app on the connected Apple Watch (#{EXTERNAL_APP_ENV_DESC}, APP_LAUNCH_ARGS, APP_CONSOLE=1)"
       task :run do
-        app = built_app(ws_device_derived, "*-watchos", "WatchStackchan", "watchos:stackchan:device:build")
-        device_install_launch(/Watch/, "Apple Watch", app, ws_bundle)
+        a = external_app("watchos")
+        app = built_app(a[:device_derived], "*-watchos", a[:scheme], "watchos:app:device:build")
+        device_install_launch(/Watch/, "Apple Watch", app, a[:bundle], **external_app_launch_opts)
       end
 
-      desc "Full Watch Stack-chan device pipeline: lib -> gen -> build -> run (needs a connected, signed Apple Watch)"
-      task all: [:lib, "watchos:stackchan:gen", :build, :run]
+      desc "Full external watch app device pipeline: lib -> gen -> build -> run (#{EXTERNAL_APP_ENV_DESC} MRUBY_CONFIG_DEVICE)"
+      task all: [:lib, "watchos:app:gen", :build, :run]
     end
   end
 end
@@ -702,7 +812,7 @@ end
 # namespaces are written out by hand in this file, so they are listed by hand
 # here too — add a watchOS example and this list is the one place to extend.
 REGRESSION_EXAMPLES = IOS_EXAMPLES.map { |e| "ios:#{e[:name]}" } +
-                      %w[watchos:led watchos:stackchan]
+                      %w[watchos:led]
 
 REGRESS_LOG_DIR = File.join(BUILD_DIR, "regress")
 

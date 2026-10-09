@@ -13,7 +13,7 @@ tickループも、すべてRuby側にあります。
 
 ## しくみ
 
-永続VMが`app.rb`を起動し、`$app = TiltSynthApp.new`が代入されてsynthが始まります。
+永続VMが`app.rb`を起動し、`App = TiltSynthApp.new`が代入されてsynthが始まります。
 以後`VMExecutor`が単一のVMスレッド上で50msごと（20Hz）に`tick`を呼びます。
 
 ```
@@ -64,8 +64,7 @@ ruby examples/ios/tilt-synth/test_mapping.rb
 ```
 
 このスクリプトは通常gemが供給する`Motion`と`Synth`をスタブに差し替えてマッピングを
-アサートします。[stackchanの`test_frames.rb`](../stackchan/README_jp.md#フレームのコーデック)
-と同じ形です。
+アサートします。
 
 ## ビルドと実行
 

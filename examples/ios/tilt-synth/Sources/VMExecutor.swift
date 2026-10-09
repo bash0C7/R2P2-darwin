@@ -3,7 +3,7 @@ import Foundation
 // Owns the persistent PicoRuby VM. mruby is single-threaded, so vm_open /
 // vm_call / vm_close MUST all run on ONE thread. This serial DispatchQueue is
 // that thread; the SwiftUI layer only posts onto it. The tilt-to-sound
-// behaviour is entirely in app.rb: vm_open boots it ($app = TiltSynthApp.new,
+// behaviour is entirely in app.rb: vm_open boots it (App = TiltSynthApp.new,
 // which starts the Synth), then a periodic `tick` reads Motion and drives
 // Synth. Neither CoreMotion nor AVAudioEngine touch mruby directly -- only
 // this VM thread calls vm_call.

@@ -13,7 +13,7 @@ and the tick loop are all Ruby.
 
 ## How it works
 
-The persistent VM boots `app.rb`, which assigns `$app = TiltSynthApp.new` and
+The persistent VM boots `app.rb`, which assigns `App = TiltSynthApp.new` and
 starts the synth. `VMExecutor` then calls `tick` every 50 ms — 20 Hz — on the
 single VM thread.
 
@@ -66,8 +66,7 @@ ruby examples/ios/tilt-synth/test_mapping.rb
 ```
 
 The script stubs `Motion` and `Synth` — normally supplied by the gems — and
-asserts the mapping, mirroring
-[stackchan's `test_frames.rb`](../stackchan/README.md#frame-codec).
+asserts the mapping.
 
 ## Build and run
 

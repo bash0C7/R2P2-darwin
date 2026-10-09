@@ -8,10 +8,6 @@
 # Defaults keep the led-toggle invocation working unchanged:
 #   build_name       "watchos-device"
 #   config_basename  "r2p2-picoruby-watchos-device.rb"
-#
-# The Stack-chan watch example passes its own pair:
-#   ruby build_config/recompile_arm64_32.rb \
-#     watchos-stackchan-device r2p2-picoruby-watchos-stackchan-device.rb
 
 require 'shellwords'
 
@@ -32,7 +28,7 @@ puts "Recompiling #{BUILD_NAME} against #{CONFIG_BASENAME}"
 # watchos:led:device:lib` compiled the other objects with. A mismatch here
 # (esp. MRB_INT64 / MRB_NO_BOXING) yields a libmruby.a whose objects disagree
 # on the mrb_value layout — a silent on-device corruption.
-CONFIG_RB = File.join(__dir__, CONFIG_BASENAME)
+CONFIG_RB = File.absolute_path(CONFIG_BASENAME, __dir__)
 config_src = File.read(CONFIG_RB)
 defs = config_src.scan(/conf\.cc\.defines\s*<<\s*"([^"]+)"/).flatten
 raise "no cc.defines found in #{CONFIG_RB}" if defs.empty?
