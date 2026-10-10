@@ -86,7 +86,7 @@ Swift / Xcode projectのbuild・Simulatorと実機の起動・log取得はこち
 - 無料の Personal Team は、1台に入れられるappが3つまで。超えると `maximum number of installed apps using a free developer profile` で install が拒否され、`RunProject` は `The app failed to launch after building successfully` を返す。理由は `xcrun devicectl device install app` を直接叩くと読める。
 - 実機で `RunProject` が応答しない時は、iPhoneのロックを疑う。呼び出しは時間を区切る。
 - `DeviceInteractionStartWorkspaceSession` は実機をデバイス名でもUDIDでも受け付けず、Simulatorだけを候補に返す。
-- `rake <name>:device:run` は `DEVICE_NAME` を指定しないと、paired な端末のうち1台を並び順で選ぶ。指定しても、一覧の識別子がUUID形式でない端末（`00008110-…`）は拾えず `no connected iOS device` になる。その場合は `devicectl` を直接使う。
+- `rake <name>:device:run` は届く実機（`connected` か `available (paired)`、Simulatorは除く）を自分で選ぶ。同じ種類の実機が複数届く時は `DEVICE_NAME` で絞る。
 - 完了の線引きは変わらず実機。
 
 ## 完了の線引き
