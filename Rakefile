@@ -1,6 +1,7 @@
 require "shellwords"
 require "rbconfig"
 require "digest"
+require_relative "rakelib/devicectl"
 
 ROOT          = __dir__
 PICORUBY_REPO = ENV["PICORUBY_REPO"] || "https://github.com/bash0C7/picoruby.git"
@@ -100,21 +101,11 @@ def generate_prism_templates
   end
 end
 
-# Destination id of the SPECIFIC connected device (not generic/platform=...) so
-# -allowProvisioningUpdates + -allowProvisioningDeviceRegistration can register
-# it with the team and generate a profile. `platform` is "iOS" or "watchOS".
-# Names of the devices devicectl reports as "connected" right now. A paired
-# but absent device is "available (paired)", and a stale one "unavailable";
-# neither can take an install, so both helpers below prefer this set.
+# Names of the physical devices devicectl reports as "connected" right now. A
+# paired but absent device is "available (paired)", and a stale one
+# "unavailable"; Simulators are listed too and are never a target here.
 def devicectl_connected_names
-  `xcrun devicectl list devices`.lines.grep(/\bconnected\b/).map { |l| l.split(/\s{2,}/).first.to_s.strip }
-end
-
-# Apple names a device "<owner>\u00A0Apple\u00A0Watch", with NO-BREAK SPACE between the
-# words. A DEVICE_NAME typed with the ordinary space that looks identical then
-# matches nothing, so both sides are flattened before comparison.
-def device_name_normalize(str)
-  str.tr("\u00A0", " ")
+  Devicectl.connected_names(`xcrun devicectl list devices`)
 end
 
 # DEVICE_NAME pins which paired device the device: tasks target, matched as a
@@ -123,24 +114,21 @@ end
 # the fallbacks below then choose by list order, which is arbitrary and readily
 # lands on a device that is locked, absent, or simply the wrong one.
 def device_name_filter(rows)
-  want = ENV["DEVICE_NAME"]
-  return rows if want.nil? || want.empty?
-  needle = device_name_normalize(want)
-  picked = rows.select { |row| device_name_normalize(row).include?(needle) }
-  raise "DEVICE_NAME=#{want.inspect} matches none of:\n#{rows.join}" if picked.empty?
-  picked
+  Devicectl.filter_by_name(rows, ENV["DEVICE_NAME"])
 end
 
+# nil when xcodebuild lists no device destination of the platform (a Watch
+# drops off within seconds of its screen going dark); the signed build does not
+# need the device, so device_build then builds for generic/platform.
 def connected_destination(proj, scheme, platform)
   lines = `xcodebuild -project #{proj.shellescape} -scheme #{scheme} -showdestinations 2>/dev/null`.lines
           .grep(/platform:#{platform},/).reject { |l| l =~ /Simulator|placeholder/ }
+  return nil if lines.empty?
   lines = device_name_filter(lines)
   connected = devicectl_connected_names
   line = lines.find { |l| connected.any? { |n| l.include?("name:#{n}") } } ||
-         lines.find { |l| l !~ /error:/ } || lines.first
-  dest = line&.match(/id:(\S+?),?\s/)&.captures&.first
-  raise "no connected #{platform} device destination (xcodebuild -showdestinations)" unless dest
-  dest
+         lines.find { |l| l !~ /error:/ }
+  line&.match(/id:(\S+?),?\s/)&.captures&.first
 end
 
 # Signed device build against the connected device. Automatic signing resolves
@@ -150,11 +138,12 @@ end
 # -allowProvisioningDeviceRegistration (see `xcodebuild -help`).
 def device_build(proj, scheme, derived, archs:, platform: "iOS")
   dest = connected_destination(proj, scheme, platform)
+  destination, registration = dest ? ["id=#{dest}", " -allowProvisioningDeviceRegistration"] :
+                                     ["generic/platform=#{platform}", ""]
   sh "xcodebuild -project #{proj.shellescape} -scheme #{scheme} " \
-     "-destination 'id=#{dest}' " \
+     "-destination '#{destination}' " \
      "-derivedDataPath #{derived.shellescape} " \
-     "ARCHS=#{archs} -allowProvisioningUpdates " \
-     "-allowProvisioningDeviceRegistration build"
+     "ARCHS=#{archs} -allowProvisioningUpdates#{registration} build"
 end
 
 # Unsigned generic-device build: compiles and links the device app against
@@ -219,16 +208,12 @@ def sim_install_launch(device_label, app, bundle_id)
   sh "xcrun simctl launch #{udid} #{bundle_id}"
 end
 
-# UUID of the first connected device matching `pattern` (/iPhone|iPad/ or
-# /Watch/); `label` names it in the error message. Skips "unavailable" rows
-# (e.g. another of the user's devices that is paired but not present) so a
-# stale pairing never shadows the device actually connected right now.
+# UDID of the reachable physical device matching `pattern` (/iPhone|iPad/ or
+# /Watch/), preferring one that reports "connected"; `label` names it in the
+# error message. Simulator rows and "unavailable" rows (another of the user's
+# devices that is paired but not present) never shadow the device in reach.
 def devicectl_udid(pattern, label)
-  rows = device_name_filter(
-    `xcrun devicectl list devices`.lines.grep(pattern).reject { |l| l =~ /\bunavailable\b/ }
-  )
-  dev = (rows.find { |l| l =~ /\bconnected\b/ } || rows.first)
-        &.match(/([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/)&.captures&.first
+  dev = Devicectl.pick_udid(`xcrun devicectl list devices`, pattern, name: ENV["DEVICE_NAME"])
   raise "no connected #{label} (xcrun devicectl list devices)" unless dev
   dev
 end
@@ -841,9 +826,9 @@ def regress(steps)
 end
 
 namespace :regress do
-  desc "Host-only checks: every example's standalone unit test + the bridge smoke test (no Xcode, no Simulator)"
+  desc "Host-only checks: every example's and rakelib's standalone unit test + the bridge smoke test (no Xcode, no Simulator)"
   task :unit do
-    tests = Dir.glob(File.join(ROOT, "examples", "**", "test_*.rb")).sort
+    tests = (Dir.glob(File.join(ROOT, "examples", "**", "test_*.rb")) + Dir.glob(File.join(ROOT, "rakelib", "test_*.rb"))).sort
     abort "no examples/**/test_*.rb found — the glob or the example layout moved" if tests.empty?
     mkdir_p REGRESS_LOG_DIR
     results = tests.map do |test|

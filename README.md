@@ -139,7 +139,7 @@ rake clobber   # clean + remove vendor/picoruby
 | `PICORUBY_REF` | `port-darwin` | ref to fetch — see [Vendor source](#vendor-source) |
 | `IOS_MIN` | `17.0` | iOS version-min for the cross-built `libmruby.a` (the example apps themselves target iOS 26 for Liquid Glass) |
 | `SIM_NAME` | `iPhone 16e` | Simulator model `ios:*:run` boots (falls back to the first available iPhone) |
-| `DEVICE_NAME` | unset | substring pinning which paired device the `device:` tasks target; needed when several are paired and none reports "connected" |
+| `DEVICE_NAME` | unset | substring of the device name (as `xcrun devicectl list devices` prints it) pinning which paired device the `device:` tasks target; needed when several of the same platform are reachable |
 | `WATCHOS_MIN` | `11.0` | watchOS deployment target minimum |
 | `PICORUBY_BLE_GEMDIR` | vendor's `picoruby-ble` | alternate picoruby-ble checkout for the BLE examples |
 | `MRUBY_CONFIG` | `build_config/r2p2-picoruby-darwin.rb` | build config for the `macos:` host tasks |
@@ -231,6 +231,18 @@ time (install error 3002 means you are at the limit — remove one with
 `xcrun devicectl device uninstall app --device <UDID> <bundle-id>`), and
 provisioning that expires after seven days. The device must also be unlocked
 when `device:run` launches the app.
+
+The `device:` tasks choose the device themselves from
+`xcrun devicectl list devices`. Simulator rows (`Reality` column `simulated`)
+are ignored; a row without that column counts as a physical device. Of the
+physical devices of the platform, those whose State is `connected` or
+`available (paired)` are reachable and `connected` is preferred; `unavailable`
+ones are skipped. The install and launch go to the device's UDID exactly as
+devicectl prints it (`00008140-001D39113668401C` or the older 8-4-4-4-12 form).
+`device:build` signs for the specific device when `xcodebuild -showdestinations`
+lists it (with `-allowProvisioningDeviceRegistration`), and otherwise for
+`generic/platform=<iOS|watchOS>`: the signed build does not need the device, which
+matters for an Apple Watch that drops to `unavailable` when its screen goes dark.
 
 `device:check` needs no hardware at all: it links the app for a generic device
 with signing disabled, which surfaces device-SDK-only breakage — an API the
