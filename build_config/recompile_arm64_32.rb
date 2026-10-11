@@ -76,7 +76,6 @@ INCLUDES = [
   "vendor/picoruby/mrbgems/picoruby-machine/include",
   "vendor/picoruby/mrbgems/picoruby-machine/lib/estalloc",
   "vendor/picoruby/mrbgems/picoruby-io-console/include",
-  "vendor/picoruby/mrbgems/hal-io-darwin/src",
   "vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/src",
   "vendor/picoruby/mrbgems/picoruby-mbedtls/lib/mbedtls/include",
   "vendor/picoruby/mrbgems/picoruby-mbedtls/include",

@@ -80,10 +80,9 @@ picorubyのmrubyビルドは`arm64_32`を直接ターゲットにしません。
 ### forkもexecも使えない
 
 watchOS SDKは`fork`と`exec`を禁じています。`puts`の提供元でもある`mruby-io`は
-`IO.popen`をまさにその2つで実装しているため、ビルドは代わりのもの
-（`hal-io-darwin`）を差し込みます。同じコードからspawnだけを抜いたものです。
-したがって時計の上では`IO.popen`が使えません。`mruby-io`のそれ以外はiOSと同じに
-振る舞います。
+`IO.popen`をまさにその2つで実装しており、そのposix HALはAppleのdevice SDK向けの
+ビルドではspawnを含めません。したがって時計の上では`IO.popen`が使えません。
+`mruby-io`のそれ以外はiOSと同じに振る舞います。
 
 ### 大きなVMスレッドスタック
 

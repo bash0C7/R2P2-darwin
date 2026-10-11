@@ -416,9 +416,7 @@ CI runs). Advancing that pin, and diagnosing a pin that stopped working, is the
 
 The default source is the `port-darwin` branch of
 [bash0C7/picoruby](https://github.com/bash0C7/picoruby): upstream master plus
-the darwin ports (ble, rng, mbedtls, io-console, machine, socket) and
-`hal-io-darwin`, an external HAL provider that replaces `mruby-io`'s posix HAL
-for watchOS, whose SDK forbids `fork` and `exec`.
+the darwin ports (ble, rng, mbedtls, io-console, machine, socket).
 
 Upstream `picoruby/picoruby` master carries none of those ports. Pointing
 `PICORUBY_REF` at it breaks every example that needs a darwin port first:

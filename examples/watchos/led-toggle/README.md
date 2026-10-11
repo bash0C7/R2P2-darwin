@@ -82,10 +82,10 @@ yourself — the task does it.
 ### No fork, no exec
 
 The watchOS SDK forbids `fork` and `exec`. `mruby-io` — which is where `puts`
-comes from — implements `IO.popen` with exactly those, so the build swaps in a
-replacement (`hal-io-darwin`) that is the same code without the spawning.
-`IO.popen` is therefore absent on the watch; everything else about `mruby-io`
-behaves as it does on iOS.
+comes from — implements `IO.popen` with exactly those, and its posix HAL leaves
+the spawning out when it is built for an Apple device SDK. `IO.popen` is
+therefore absent on the watch; everything else about `mruby-io` behaves as it
+does on iOS.
 
 ### A large VM thread stack
 

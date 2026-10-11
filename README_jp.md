@@ -393,9 +393,7 @@ pinされ、`rake aot:refresh`（CIも同じタスクを実行）で強制され
 
 既定の取得元は[bash0C7/picoruby](https://github.com/bash0C7/picoruby)の
 `port-darwin`ブランチです。upstream masterに、darwin port（ble / rng / mbedtls /
-io-console / machine / socket）と`hal-io-darwin`を加えたものです。
-`hal-io-darwin`は、`fork`と`exec`を禁じるwatchOS SDK向けに`mruby-io`のposix HAL
-を差し替える外部HAL providerです。
+io-console / machine / socket）を加えたものです。
 
 upstreamの`picoruby/picoruby` masterにはこれらのportがありません。
 `PICORUBY_REF`をそちらへ向けると、darwin portを先に選ぶexampleがすべて壊れます。
