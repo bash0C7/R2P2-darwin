@@ -23,7 +23,7 @@ jobs:
       # at right now — a cache hit means vendor/ and build/ already match it.
       - name: Resolve picoruby ref
         id: picoruby
-        run: echo "sha=$(git ls-remote https://github.com/bash0C7/picoruby.git port-darwin | cut -f1)" >> "$GITHUB_OUTPUT"
+        run: echo "sha=$(git ls-remote https://github.com/bash0C7/picoruby.git claude/latest-deps-darwin | cut -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Cache vendor/picoruby
         uses: actions/cache@v6

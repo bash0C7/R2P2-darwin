@@ -5,7 +5,7 @@ require_relative "rakelib/devicectl"
 
 ROOT          = __dir__
 PICORUBY_REPO = ENV["PICORUBY_REPO"] || "https://github.com/bash0C7/picoruby.git"
-PICORUBY_REF  = ENV["PICORUBY_REF"]  || "port-darwin"
+PICORUBY_REF  = ENV["PICORUBY_REF"]  || "claude/latest-deps-darwin"
 PICORUBY_SRC  = File.join(ROOT, "vendor", "picoruby")
 BUILD_DIR     = File.join(ROOT, "build")
 

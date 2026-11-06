@@ -136,7 +136,7 @@ rake clobber   # clean + remove vendor/picoruby
 | Variable | Default | Controls |
 |---|---|---|
 | `PICORUBY_REPO` | `https://github.com/bash0C7/picoruby.git` | picoruby source repository |
-| `PICORUBY_REF` | `port-darwin` | ref to fetch — see [Vendor source](#vendor-source) |
+| `PICORUBY_REF` | `claude/latest-deps-darwin` | ref to fetch — see [Vendor source](#vendor-source) |
 | `IOS_MIN` | `17.0` | iOS version-min for the cross-built `libmruby.a` (the example apps themselves target iOS 26 for Liquid Glass) |
 | `SIM_NAME` | `iPhone 16e` | Simulator model `ios:*:run` boots (falls back to the first available iPhone) |
 | `DEVICE_NAME` | unset | substring of the device name (as `xcrun devicectl list devices` prints it) pinning which paired device the `device:` tasks target; needed when several of the same platform are reachable |
@@ -414,7 +414,7 @@ CI runs). Advancing that pin, and diagnosing a pin that stopped working, is the
 
 ## Vendor source
 
-The default source is the `port-darwin` branch of
+The default source is the `claude/latest-deps-darwin` branch of
 [bash0C7/picoruby](https://github.com/bash0C7/picoruby): upstream master plus
 the darwin ports (ble, rng, mbedtls, io-console, machine, socket).
 

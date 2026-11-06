@@ -2,7 +2,7 @@
 # opted in. Used by the macOS BLE variant in README.md.
 #
 # Requires a picoruby tree that carries mrbgems/picoruby-ble/ports/darwin/
-# (the default fork bash0C7/picoruby, branch port-darwin, does).
+# (the default fork bash0C7/picoruby, branch claude/latest-deps-darwin, does).
 # picoruby-picotest is included so the port's tests can run.
 
 MRuby::Build.new do |conf|
