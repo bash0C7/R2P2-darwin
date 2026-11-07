@@ -70,12 +70,12 @@ end
 
 # The vendored prism (mrbgems/mruby-compiler, and the copy under picoruby-mruby's
 # mruby) ships its templates but not the files they generate; templates/template.rb
-# produces include/prism/diagnostic.h. The host mrbc (picoruby's build_mrbc_exec
-# hook) compiles prism during the presym scan, before any mrbgem.rake can run the
-# generator, so on a clean clone the build aborts on the missing header.
-# Generate it right after fetch. Skips a copy whose template.rb is absent
-# (template layout differs) or whose diagnostic.h already exists (a picoruby that
-# generates it itself); the generator is idempotent either way.
+# produces include/prism/ast.h and the sources beside it. The host mrbc (picoruby's
+# build_mrbc_exec hook) compiles prism during the presym scan, before any
+# mrbgem.rake can run the generator, so on a clean clone the build aborts on the
+# missing header. Generate them right after every fetch, so a refresh onto another
+# prism replaces what the previous one generated. Skips a copy whose template.rb is
+# absent (template layout differs); the generator is idempotent.
 PRISM_TEMPLATE_DIRS = [
   File.join(PICORUBY_SRC, "mrbgems", "mruby-compiler", "lib", "prism"),
   File.join(
@@ -88,13 +88,8 @@ PRISM_TEMPLATE_DIRS = [
 def generate_prism_templates
   PRISM_TEMPLATE_DIRS.each do |dir|
     template = File.join(dir, "templates", "template.rb")
-    generated = File.join(dir, "include", "prism", "diagnostic.h")
     unless File.exist?(template)
       puts "prism templates: template.rb absent (#{template}); skipping"
-      next
-    end
-    if File.exist?(generated)
-      puts "prism templates: diagnostic.h already present (#{dir}); skipping"
       next
     end
     sh "cd #{dir.shellescape} && #{RbConfig.ruby.shellescape} templates/template.rb"
@@ -348,6 +343,7 @@ task :refresh do
   sh "git -C #{PICORUBY_SRC.shellescape} fetch #{PICORUBY_REPO.shellescape} #{PICORUBY_REF.shellescape}"
   sh "git -C #{PICORUBY_SRC.shellescape} checkout -B #{PICORUBY_REF.shellescape} FETCH_HEAD"
   sh "git -C #{PICORUBY_SRC.shellescape} submodule update --init --recursive"
+  sh "git -C #{PICORUBY_SRC.shellescape} submodule foreach --quiet --recursive git clean -ffdxq"
   generate_prism_templates
 end
 
